@@ -15,6 +15,26 @@ pub struct Config {
     pub logging: LoggingConfig,
     #[serde(default)]
     pub solana: SolanaConfig,
+    #[serde(default)]
+    pub scanner: ScannerGrpcConfig,
+}
+
+/// Scanner gRPC connection config.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ScannerGrpcConfig {
+    #[serde(default)]
+    pub grpc_endpoint: String,
+    #[serde(default)]
+    pub grpc_x_token: String,
+}
+
+impl Default for ScannerGrpcConfig {
+    fn default() -> Self {
+        Self {
+            grpc_endpoint: String::new(),
+            grpc_x_token: String::new(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -158,6 +178,7 @@ pub struct Secrets {
     pub binance_api_key: Option<String>,
     pub binance_secret_key: Option<String>,
     pub solana_keypair_path: Option<String>,
+    pub shyft_grpc_x_token: Option<String>,
     pub auth_token: String,
 }
 
@@ -186,11 +207,13 @@ impl Secrets {
         };
 
         let solana_keypair_path = std::env::var("SOLANA_KEYPAIR_PATH").ok();
+        let shyft_grpc_x_token = std::env::var("SHYFT_GRPC_X_TOKEN").ok();
 
         Ok(Self {
             binance_api_key,
             binance_secret_key,
             solana_keypair_path,
+            shyft_grpc_x_token,
             auth_token,
         })
     }
@@ -226,6 +249,7 @@ impl Config {
                 risk: RiskConfig::default(),
                 logging: default_logging(),
                 solana: SolanaConfig::default(),
+                scanner: ScannerGrpcConfig::default(),
             })
         }
     }
@@ -256,6 +280,11 @@ max_trades_per_minute = 10
 [logging]
 level = "info"
 format = "pretty"
+
+# Scanner settings (PumpFun token discovery via Yellowstone gRPC)
+# [scanner]
+# grpc_endpoint = "https://rabbitstream.ams.shyft.to/"
+# grpc_x_token = "your_shyft_grpc_token"
 "#;
 
 pub const DEFAULT_ENV: &str = r#"# === Auth (required for all exchanges) ===
@@ -267,4 +296,7 @@ BINANCE_SECRET_KEY=your_testnet_secret_key_here
 
 # === Solana (for exchange = "pumpfun" or "pumpswap") ===
 # SOLANA_KEYPAIR_PATH=~/.config/solana/id.json
+
+# === Scanner (PumpFun token discovery) ===
+# SHYFT_GRPC_X_TOKEN=your_shyft_grpc_token
 "#;

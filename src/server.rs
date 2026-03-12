@@ -59,6 +59,14 @@ pub fn build_router<E: Exchange + Clone>(
         .route("/trades/stats", get(api::status::handle_trade_stats::<E>))
         .route("/trades/pnl", get(api::status::handle_pnl_series::<E>))
         .route("/order/{id}", delete(api::status::handle_cancel::<E>))
+        // Scanner endpoints
+        .route("/scanner/start", post(api::scanner_api::handle_scanner_start::<E>))
+        .route("/scanner/stop", post(api::scanner_api::handle_scanner_stop::<E>))
+        .route("/scanner/status", get(api::scanner_api::handle_scanner_status::<E>))
+        .route("/scanner/tokens", get(api::scanner_api::handle_scanner_tokens::<E>))
+        .route("/scanner/config", get(api::scanner_api::handle_scanner_config_get::<E>))
+        .route("/scanner/config", axum::routing::put(api::scanner_api::handle_scanner_config_put::<E>))
+        .route("/scanner/positions", get(api::scanner_api::handle_scanner_positions::<E>))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
         .layer(middleware::from_fn(move |mut req: Request, next: Next| {
@@ -93,6 +101,8 @@ pub async fn serve<E: Exchange + Clone>(
     info!("   GET  /balance   — account balances");
     info!("   GET  /positions — open positions");
     info!("   GET  /trades    — audit log");
+    info!("   POST /scanner/start  — start token scanner");
+    info!("   GET  /scanner/status — scanner status + tokens");
 
     axum::serve(listener, router).await?;
     Ok(())

@@ -5,8 +5,23 @@ mod dashboard;
 mod error;
 mod exchange;
 mod risk;
+mod scanner;
 mod server;
 mod solana;
+
+/// gRPC proto modules (Yellowstone/Geyser for PumpFun streaming).
+pub mod proto {
+    pub mod solana {
+        pub mod storage {
+            pub mod confirmed_block {
+                include!(concat!(env!("OUT_DIR"), "/solana.storage.confirmed_block.rs"));
+            }
+        }
+    }
+    pub mod geyser {
+        tonic::include_proto!("geyser");
+    }
+}
 
 use api::AppState;
 use audit::AuditLog;
@@ -16,6 +31,7 @@ use exchange::pumpfun::PumpFunExchange;
 use exchange::pumpswap::PumpSwapExchange;
 use exchange::{Exchange, OrderRequest, OrderSide, OrderType};
 use risk::RiskEngine;
+use scanner::Scanner;
 
 use clap::{Parser, Subcommand};
 use std::sync::Arc;
@@ -138,6 +154,7 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
                 risk: RiskEngine::new(config.risk.clone()),
                 audit: Mutex::new(AuditLog::new(&config::config_dir())?),
                 config: config.clone(),
+                scanner: Scanner::new(),
             });
             info!("[INIT] Exchange: {}", state.exchange.name());
             log_risk_config(&config);
@@ -152,6 +169,7 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
                 risk: RiskEngine::new(config.risk.clone()),
                 audit: Mutex::new(AuditLog::new(&config::config_dir())?),
                 config: config.clone(),
+                scanner: Scanner::new(),
             });
             info!("[INIT] Exchange: {} | RPC: {}", state.exchange.name(), config.solana.rpc_url);
             log_risk_config(&config);
@@ -166,6 +184,7 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
                 risk: RiskEngine::new(config.risk.clone()),
                 audit: Mutex::new(AuditLog::new(&config::config_dir())?),
                 config: config.clone(),
+                scanner: Scanner::new(),
             });
             info!("[INIT] Exchange: {} | RPC: {}", state.exchange.name(), config.solana.rpc_url);
             log_risk_config(&config);

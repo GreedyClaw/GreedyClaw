@@ -287,6 +287,76 @@ tr:hover td { background: var(--bg3); }
 .trades-panel .table-scroll::-webkit-scrollbar-track { background: var(--bg); }
 .trades-panel .table-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 20px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.tab-btn {
+  flex: 1;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  color: var(--text2);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+.tab-btn:hover { background: var(--bg3); color: var(--text); }
+.tab-btn.active { background: var(--bg3); color: var(--green); border-bottom: 2px solid var(--green); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* Scanner */
+.scanner-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.scanner-controls input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-family: monospace;
+  font-size: 13px;
+  flex: 1;
+}
+.scanner-controls button {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+}
+.btn-start { background: var(--green); color: var(--bg); }
+.btn-stop { background: var(--red); color: white; }
+.scanner-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.scanner-stat {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+  text-align: center;
+}
+.scanner-stat .label { font-size: 11px; color: var(--text2); text-transform: uppercase; }
+.scanner-stat .val { font-size: 18px; font-weight: 700; margin-top: 2px; }
+.mint-short { font-family: monospace; font-size: 12px; }
+
 /* Loading / error */
 .loading {
   text-align: center;
@@ -329,6 +399,14 @@ tr:hover td { background: var(--bg3); }
 <div id="errorBox" style="padding: 0 24px; margin-top: 12px;"></div>
 
 <div class="container" id="main" style="display:none;">
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('trading')">Trading</button>
+    <button class="tab-btn" onclick="switchTab('scanner')">Scanner</button>
+  </div>
+
+  <!-- Trading Tab -->
+  <div class="tab-content active" id="tab-trading">
   <!-- Stat cards -->
   <div class="stats-row">
     <div class="stat-card">
@@ -408,6 +486,43 @@ tr:hover td { background: var(--bg3); }
       <div class="empty">No trades yet</div>
     </div>
   </div>
+  </div><!-- end tab-trading -->
+
+  <!-- Scanner Tab -->
+  <div class="tab-content" id="tab-scanner">
+    <div class="scanner-controls">
+      <input id="grpcEndpoint" placeholder="gRPC endpoint (e.g. https://rabbitstream.ams.shyft.to/)" />
+      <input id="grpcToken" type="password" placeholder="x-token" style="max-width:200px;" />
+      <button class="btn-start" onclick="startScanner()">Start</button>
+      <button class="btn-stop" onclick="stopScanner()">Stop</button>
+      <span class="badge" id="scannerStatusBadge" style="font-size:13px;">STOPPED</span>
+    </div>
+
+    <div class="scanner-stats" id="scannerStats">
+      <div class="scanner-stat"><div class="label">Tracking</div><div class="val" id="sc-tracking">0</div></div>
+      <div class="scanner-stat"><div class="label">TXs</div><div class="val" id="sc-txs">0</div></div>
+      <div class="scanner-stat"><div class="label">Creates</div><div class="val" id="sc-creates">0</div></div>
+      <div class="scanner-stat"><div class="label">Buys</div><div class="val" id="sc-buys">0</div></div>
+      <div class="scanner-stat"><div class="label">Sells</div><div class="val" id="sc-sells">0</div></div>
+      <div class="scanner-stat"><div class="label">Triggers</div><div class="val" id="sc-triggers" style="color:var(--green)">0</div></div>
+      <div class="scanner-stat"><div class="label">Positions</div><div class="val" id="sc-positions">0</div></div>
+      <div class="scanner-stat"><div class="label">Errors</div><div class="val" id="sc-errors" style="color:var(--red)">0</div></div>
+    </div>
+
+    <!-- Scanner positions -->
+    <div class="panel" style="margin-bottom:16px;">
+      <h3>Scanner Positions</h3>
+      <div id="scannerPositionsTable"><div class="empty">No active positions</div></div>
+    </div>
+
+    <!-- Top tokens -->
+    <div class="trades-panel">
+      <h3>Top Tokens (by Volume)</h3>
+      <div class="table-scroll" id="topTokensTable">
+        <div class="empty">Scanner not running</div>
+      </div>
+    </div>
+  </div><!-- end tab-scanner -->
 </div>
 
 <script>
@@ -659,11 +774,123 @@ function fmtNum(n) {
   return n.toFixed(2);
 }
 
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.querySelector('.tab-btn[onclick*="' + tab + '"]').classList.add('active');
+}
+
+async function startScanner() {
+  const endpoint = document.getElementById('grpcEndpoint').value.trim();
+  const xToken = document.getElementById('grpcToken').value.trim();
+  if (!endpoint || !xToken) { showError('gRPC endpoint and x-token required'); return; }
+  try {
+    await fetch('/scanner/start', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ endpoint: endpoint, x_token: xToken }),
+    });
+    refreshScanner();
+  } catch(e) { showError('Start failed: ' + e.message); }
+}
+
+async function stopScanner() {
+  try {
+    await fetch('/scanner/stop', { method: 'POST', headers: getHeaders() });
+    refreshScanner();
+  } catch(e) { showError('Stop failed: ' + e.message); }
+}
+
+async function refreshScanner() {
+  try {
+    const status = await apiFetch('/scanner/status');
+    const badge = document.getElementById('scannerStatusBadge');
+    badge.textContent = status.running ? 'RUNNING' : 'STOPPED';
+    badge.style.color = status.running ? 'var(--green)' : 'var(--red)';
+    badge.style.borderColor = status.running ? 'var(--green)' : 'var(--red)';
+
+    document.getElementById('sc-tracking').textContent = status.tokens_tracking;
+    document.getElementById('sc-txs').textContent = fmtNum(status.txs_received);
+    document.getElementById('sc-creates').textContent = fmtNum(status.creates);
+    document.getElementById('sc-buys').textContent = fmtNum(status.buys);
+    document.getElementById('sc-sells').textContent = fmtNum(status.sells);
+    document.getElementById('sc-errors').textContent = status.errors;
+
+    // Parse strategy stats
+    const m = (status.strategy || '').match(/triggers=(\d+)/);
+    document.getElementById('sc-triggers').textContent = m ? m[1] : '0';
+    document.getElementById('sc-positions').textContent = status.positions.length;
+
+    // Scanner positions
+    updateScannerPositions(status.positions);
+    // Top tokens
+    updateTopTokens(status.top_tokens);
+  } catch(e) { /* silent */ }
+}
+
+function updateScannerPositions(positions) {
+  const c = document.getElementById('scannerPositionsTable');
+  if (!positions || positions.length === 0) { c.innerHTML = '<div class="empty">No active positions</div>'; return; }
+  let h = '<table><thead><tr><th>Token</th><th>Strategy</th><th>Entry</th><th>Current</th><th>Return</th><th>PnL</th><th>Age</th></tr></thead><tbody>';
+  for (const p of positions) {
+    const cls = p.return_pct >= 0 ? 'positive' : 'negative';
+    h += '<tr>'
+      + '<td class="mint-short">' + shortMint(p.mint) + '</td>'
+      + '<td>' + p.strategy + '</td>'
+      + '<td>' + p.entry_price_sol.toExponential(3) + '</td>'
+      + '<td>' + p.current_price_sol.toExponential(3) + '</td>'
+      + '<td class="' + cls + '">' + p.return_pct.toFixed(1) + '%</td>'
+      + '<td class="' + cls + '">' + p.unrealized_pnl_sol.toFixed(6) + ' SOL</td>'
+      + '<td>' + p.elapsed_s.toFixed(0) + 's</td>'
+      + '</tr>';
+  }
+  h += '</tbody></table>';
+  c.innerHTML = h;
+}
+
+function updateTopTokens(tokens) {
+  const c = document.getElementById('topTokensTable');
+  if (!tokens || tokens.length === 0) { c.innerHTML = '<div class="empty">No tokens tracked</div>'; return; }
+  let h = '<table><thead><tr><th>Token</th><th>Vol(SOL)</th><th>BC%</th><th>Spd</th><th>Dip%</th><th>Rec%</th><th>Buyers</th><th>SR%</th><th>Whale%</th><th>Age</th><th>Flag</th></tr></thead><tbody>';
+  for (const t of tokens) {
+    const flags = [];
+    if (t.triggered) flags.push('<span style="color:var(--green)">TRIG</span>');
+    if (t.graduated) flags.push('<span style="color:var(--blue)">GRAD</span>');
+    if (t.creator_sold) flags.push('<span style="color:var(--red)">CS</span>');
+    h += '<tr>'
+      + '<td class="mint-short">' + shortMint(t.mint) + '</td>'
+      + '<td>' + t.volume_sol.toFixed(1) + '</td>'
+      + '<td>' + t.bc_progress_pct.toFixed(1) + '</td>'
+      + '<td>' + t.bc_speed.toFixed(2) + '</td>'
+      + '<td>' + t.dip_pct.toFixed(0) + '</td>'
+      + '<td>' + t.recovery_pct.toFixed(1) + '</td>'
+      + '<td>' + t.buyers + '</td>'
+      + '<td>' + (t.sell_ratio * 100).toFixed(0) + '</td>'
+      + '<td>' + (t.whale_fraction * 100).toFixed(0) + '</td>'
+      + '<td>' + t.age_s.toFixed(0) + 's</td>'
+      + '<td>' + (flags.join(' ') || '-') + '</td>'
+      + '</tr>';
+  }
+  h += '</tbody></table>';
+  c.innerHTML = h;
+}
+
+function shortMint(m) {
+  if (!m || m.length <= 12) return escHtml(m || '');
+  return escHtml(m.substring(0,6) + '..' + m.substring(m.length-4));
+}
+
 function startAutoRefresh() {
   if (refreshTimer) clearInterval(refreshTimer);
   refreshTimer = setInterval(async () => {
     if (!document.getElementById('autoRefresh').checked) return;
-    try { await refresh(); } catch(e) { /* silent */ }
+    try {
+      await refresh();
+      if (document.getElementById('tab-scanner').classList.contains('active')) {
+        await refreshScanner();
+      }
+    } catch(e) { /* silent */ }
   }, 10000);
 }
 </script>

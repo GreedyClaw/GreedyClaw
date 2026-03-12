@@ -59,6 +59,17 @@ uuid = { version = "1", features = ["v4"] }
 # Concurrent state
 dashmap = "6"
 
+# gRPC (Yellowstone/Geyser for PumpFun streaming)
+tonic = { version = "0.12", features = ["tls", "tls-roots"] }
+prost = "0.13"
+prost-types = "0.13"
+tokio-stream = "0.1"
+futures = "0.3"
+backoff = { version = "0.4", features = ["tokio"] }
+
+[build-dependencies]
+tonic-build = "0.12"
+
 [profile.release]
 opt-level = 3
 lto = "thin"
