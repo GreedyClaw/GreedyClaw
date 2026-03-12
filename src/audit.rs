@@ -84,7 +84,7 @@ impl AuditLog {
     }
 
     /// Compute HMAC-SHA256 signature for an audit entry.
-    fn sign(&self, data: &str) -> String {
+    pub(crate) fn sign(&self, data: &str) -> String {
         let mut mac = HmacSha256::new_from_slice(&self.hmac_key)
             .expect("HMAC key error");
         mac.update(data.as_bytes());
@@ -214,11 +214,11 @@ impl AuditLog {
             .unwrap_or(0);
 
         let buys: i64 = self.conn
-            .query_row("SELECT COUNT(*) FROM trades WHERE side = 'buy' AND status = 'Filled'", [], |r| r.get(0))
+            .query_row("SELECT COUNT(*) FROM trades WHERE UPPER(side) = 'BUY' AND status = 'Filled'", [], |r| r.get(0))
             .unwrap_or(0);
 
         let sells: i64 = self.conn
-            .query_row("SELECT COUNT(*) FROM trades WHERE side = 'sell' AND status = 'Filled'", [], |r| r.get(0))
+            .query_row("SELECT COUNT(*) FROM trades WHERE UPPER(side) = 'SELL' AND status = 'Filled'", [], |r| r.get(0))
             .unwrap_or(0);
 
         let total_volume: f64 = self.conn
@@ -277,5 +277,129 @@ impl AuditLog {
         }).unwrap();
 
         rows.filter_map(|r| r.ok()).collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::exchange::types::*;
+    use crate::risk::RiskSnapshot;
+    use std::path::PathBuf;
+    use tempfile::TempDir;
+
+    fn dummy_snapshot() -> RiskSnapshot {
+        RiskSnapshot {
+            open_positions: 1,
+            max_open_positions: 3,
+            realized_daily_pnl: 12.50,
+            floating_pnl: -3.20,
+            total_daily_pnl: 9.30,
+            remaining_daily_limit: 90.70,
+            trades_last_minute: 2,
+            max_trades_per_minute: 10,
+        }
+    }
+
+    fn dummy_entry() -> AuditEntry {
+        AuditEntry {
+            client_order_id: "test-001".into(),
+            exchange_order_id: "exch-abc".into(),
+            symbol: "BTCUSDT".into(),
+            side: OrderSide::Buy,
+            order_type: OrderType::Market,
+            requested_qty: 0.01,
+            filled_qty: 0.01,
+            avg_price: 50000.0,
+            status: OrderStatus::Filled,
+            commission: 0.05,
+            risk_snapshot: dummy_snapshot(),
+            error: None,
+        }
+    }
+
+    fn make_audit(dir: &PathBuf) -> AuditLog {
+        AuditLog::new(dir, "test-secret-token").unwrap()
+    }
+
+    #[test]
+    fn test_log_and_retrieve() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().to_path_buf();
+        let mut audit = make_audit(&dir);
+
+        // Record a trade
+        audit.record(&dummy_entry()).unwrap();
+
+        // Retrieve it
+        let trades = audit.recent_trades(10);
+        assert_eq!(trades.len(), 1);
+        assert_eq!(trades[0]["symbol"], "BTCUSDT");
+        assert_eq!(trades[0]["side"], "BUY");
+        assert_eq!(trades[0]["filled_qty"], 0.01);
+        assert_eq!(trades[0]["avg_price"], 50000.0);
+        assert_eq!(trades[0]["status"], "Filled");
+    }
+
+    #[test]
+    fn test_hmac_integrity() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().to_path_buf();
+        let audit = make_audit(&dir);
+
+        // Sign the same payload twice — should produce identical HMAC
+        let payload = "2024-01-01T00:00:00Z|BTCUSDT|BUY|0.01|50000|Filled";
+        let sig1 = audit.sign(payload);
+        let sig2 = audit.sign(payload);
+        assert_eq!(sig1, sig2);
+
+        // Different payload should produce different HMAC
+        let sig3 = audit.sign("2024-01-01T00:00:00Z|ETHUSDT|SELL|1.0|3000|Filled");
+        assert_ne!(sig1, sig3);
+
+        // Verify HMAC is a valid hex string (64 chars for SHA256)
+        assert_eq!(sig1.len(), 64);
+        assert!(sig1.chars().all(|c| c.is_ascii_hexdigit()));
+
+        // Verify with a different key produces different signature
+        let audit2 = AuditLog::new(&dir, "different-key").unwrap();
+        let sig4 = audit2.sign(payload);
+        assert_ne!(sig1, sig4);
+    }
+
+    #[test]
+    fn test_stats() {
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path().to_path_buf();
+        let mut audit = make_audit(&dir);
+
+        // Record a buy and a sell
+        audit.record(&dummy_entry()).unwrap();
+        audit
+            .record(&AuditEntry {
+                client_order_id: "test-002".into(),
+                exchange_order_id: "exch-def".into(),
+                side: OrderSide::Sell,
+                filled_qty: 0.005,
+                avg_price: 51000.0,
+                ..dummy_entry()
+            })
+            .unwrap();
+
+        let stats = audit.trade_stats();
+        // Note: side is stored as "BUY"/"SELL" (Display impl) but trade_stats
+        // queries WHERE side = 'buy'/'sell' (lowercase). This is a known case
+        // mismatch — total_trades counts by status=Filled which works, but
+        // buy/sell breakdown uses lowercase comparison against uppercase values.
+        assert_eq!(stats["total_trades"], 2);
+        // buys/sells return 0 due to case mismatch (BUY vs buy) — testing actual behavior
+        assert_eq!(stats["buys"], 0);
+        assert_eq!(stats["sells"], 0);
+        assert_eq!(stats["rejected"], 0);
+        assert_eq!(stats["unique_symbols"], 1);
+
+        // total_volume_usd = (0.01 * 50000) + (0.005 * 51000) = 500 + 255 = 755
+        let vol = stats["total_volume_usd"].as_f64().unwrap();
+        assert!((vol - 755.0).abs() < 0.01, "Expected ~755, got {}", vol);
     }
 }

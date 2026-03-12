@@ -17,12 +17,29 @@ services:
       - MT5_BRIDGE_URL=http://mt5-bridge:7879
       - CCXT_BRIDGE_URL=http://ccxt-bridge:7880
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7878/status"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Python AI agent (the "brain")
   brain:
     build: ./brain
     depends_on:
-      - gateway
+      gateway:
+        condition: service_healthy
     volumes:
       - greedyclaw-data:/root/.greedyclaw
     environment:
@@ -39,6 +56,22 @@ services:
       - BRAIN_MARKET=${BRAIN_MARKET:-forex}
       - BRAIN_MODEL=${BRAIN_MODEL:-claude-sonnet-4-20250514}
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # MT5 Python bridge (optional — for Forex/Gold)
   mt5-bridge:
@@ -48,6 +81,22 @@ services:
     profiles:
       - mt5
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7879/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # CCXT Python bridge (optional — for 100+ crypto exchanges)
   ccxt-bridge:
@@ -62,6 +111,22 @@ services:
     profiles:
       - ccxt
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7880/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   greedyclaw-data:

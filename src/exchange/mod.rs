@@ -48,4 +48,21 @@ pub trait Exchange: Send + Sync + 'static {
         &self,
         symbol: &str,
     ) -> impl std::future::Future<Output = Result<f64, AppError>> + Send;
+
+    /// Get OHLCV candles. Default returns "not available" error.
+    /// `timeframe`: e.g. "1m", "5m", "15m", "1h", "4h", "1d"
+    /// `limit`: number of candles (max 1000)
+    fn get_ohlc(
+        &self,
+        symbol: &str,
+        timeframe: &str,
+        limit: u32,
+    ) -> impl std::future::Future<Output = Result<Vec<Candle>, AppError>> + Send {
+        let _ = (symbol, timeframe, limit);
+        async {
+            Err(AppError::Exchange(
+                "OHLC not available for this exchange".into(),
+            ))
+        }
+    }
 }

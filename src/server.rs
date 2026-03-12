@@ -2,6 +2,7 @@ use crate::api::{self, AppState};
 use crate::config::Secrets;
 use crate::dashboard;
 use crate::exchange::Exchange;
+use crate::ws;
 
 use axum::extract::Request;
 use axum::http::StatusCode;
@@ -65,6 +66,7 @@ pub fn build_router<E: Exchange + Clone>(
         .route("/balance", get(api::status::handle_balance::<E>))
         .route("/positions", get(api::status::handle_positions::<E>))
         .route("/price/{symbol}", get(api::status::handle_price::<E>))
+        .route("/ohlc/{symbol}", get(api::status::handle_ohlc::<E>))
         .route("/trades", get(api::status::handle_trades::<E>))
         .route("/trades/stats", get(api::status::handle_trade_stats::<E>))
         .route("/trades/pnl", get(api::status::handle_pnl_series::<E>))
@@ -77,7 +79,7 @@ pub fn build_router<E: Exchange + Clone>(
         .route("/scanner/config", get(api::scanner_api::handle_scanner_config_get::<E>))
         .route("/scanner/config", axum::routing::put(api::scanner_api::handle_scanner_config_put::<E>))
         .route("/scanner/positions", get(api::scanner_api::handle_scanner_positions::<E>))
-        .with_state(state)
+        .with_state(state.clone())
         .layer(TraceLayer::new_for_http())
         // Request body size limit — prevents OOM attacks from oversized payloads
         .layer(axum::extract::DefaultBodyLimit::max(MAX_BODY_SIZE))
@@ -89,9 +91,15 @@ pub fn build_router<E: Exchange + Clone>(
             }
         }));
 
+    // WebSocket: auth via query param (not Bearer header), so outside middleware
+    let ws_routes = Router::new()
+        .route("/ws", get(ws::ws_handler::<E>))
+        .with_state(state);
+
     // Dashboard served without auth (token entered in the UI)
     Router::new()
         .route("/dashboard", get(dashboard::serve_dashboard))
+        .merge(ws_routes)
         .merge(api_routes)
 }
 
@@ -107,11 +115,13 @@ pub async fn serve<E: Exchange + Clone>(
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
     info!("🦀 GreedyClaw v{} listening on {}", env!("CARGO_PKG_VERSION"), addr);
+    info!("   GET  /ws        — WebSocket real-time events");
     info!("   GET  /dashboard — visual trading dashboard");
     info!("   POST /trade     — execute trades");
     info!("   GET  /status    — health + risk snapshot");
     info!("   GET  /balance   — account balances");
     info!("   GET  /positions — open positions");
+    info!("   GET  /ohlc/:sym — OHLCV candle data");
     info!("   GET  /trades    — audit log");
     info!("   POST /scanner/start  — start token scanner");
     info!("   GET  /scanner/status — scanner status + tokens");

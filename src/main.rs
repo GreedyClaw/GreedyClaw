@@ -8,6 +8,7 @@ mod risk;
 mod scanner;
 mod server;
 mod solana;
+mod ws;
 
 /// gRPC proto modules (Yellowstone/Geyser for PumpFun streaming).
 #[allow(clippy::large_enum_variant)]
@@ -176,6 +177,8 @@ fn log_risk_config(config: &Config) {
 
 /// Build AppState and serve — dispatches based on exchange name.
 async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()> {
+    let ws_tx = ws::broadcast_channel();
+
     match config.exchange.name.as_str() {
         "binance" => {
             let api_key = secrets.binance_api_key.as_ref()
@@ -189,6 +192,8 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
                 audit: Mutex::new(AuditLog::new(&config::config_dir(), &secrets.auth_token)?),
                 config: config.clone(),
                 scanner: Scanner::new(),
+                ws_tx: ws_tx.clone(),
+                auth_token: secrets.auth_token.clone(),
             });
             info!("[INIT] Exchange: {}", state.exchange.name());
             log_risk_config(&config);
@@ -204,6 +209,8 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
                 audit: Mutex::new(AuditLog::new(&config::config_dir(), &secrets.auth_token)?),
                 config: config.clone(),
                 scanner: Scanner::new(),
+                ws_tx: ws_tx.clone(),
+                auth_token: secrets.auth_token.clone(),
             });
             info!("[INIT] Exchange: {} | RPC: {}", state.exchange.name(), config.solana.rpc_url);
             log_risk_config(&config);
@@ -219,6 +226,8 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
                 audit: Mutex::new(AuditLog::new(&config::config_dir(), &secrets.auth_token)?),
                 config: config.clone(),
                 scanner: Scanner::new(),
+                ws_tx: ws_tx.clone(),
+                auth_token: secrets.auth_token.clone(),
             });
             info!("[INIT] Exchange: {} | RPC: {}", state.exchange.name(), config.solana.rpc_url);
             log_risk_config(&config);
@@ -233,6 +242,8 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
                 audit: Mutex::new(AuditLog::new(&config::config_dir(), &secrets.auth_token)?),
                 config: config.clone(),
                 scanner: Scanner::new(),
+                ws_tx: ws_tx.clone(),
+                auth_token: secrets.auth_token.clone(),
             });
             info!("[INIT] Exchange: {} | Bridge: {}", state.exchange.name(),
                   std::env::var("MT5_BRIDGE_URL").unwrap_or_else(|_| "http://127.0.0.1:7879".into()));
@@ -249,6 +260,8 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
                 audit: Mutex::new(AuditLog::new(&config::config_dir(), &secrets.auth_token)?),
                 config: config.clone(),
                 scanner: Scanner::new(),
+                ws_tx: ws_tx.clone(),
+                auth_token: secrets.auth_token.clone(),
             });
             info!("[INIT] Exchange: CCXT/{} | Bridge: {}", other,
                   std::env::var("CCXT_BRIDGE_URL").unwrap_or_else(|_| "http://127.0.0.1:7880".into()));

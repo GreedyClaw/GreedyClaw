@@ -300,6 +300,13 @@ impl RiskEngine {
         }
     }
 
+    /// Force-reset daily counters (for testing).
+    #[cfg(test)]
+    pub fn force_reset_daily(&self) {
+        self.daily_pnl_cents.store(0, Ordering::Relaxed);
+        self.daily_trades.store(0, Ordering::Relaxed);
+    }
+
     /// Get all tracked positions (for GET /positions).
     pub fn get_positions(&self) -> Vec<Position> {
         self.positions
@@ -320,5 +327,229 @@ impl RiskEngine {
                 }
             })
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::RiskConfig;
+    use crate::exchange::types::OrderSide;
+
+    fn test_config() -> RiskConfig {
+        RiskConfig {
+            max_position_usd: 1000.0,
+            max_daily_loss_usd: 100.0,
+            max_open_positions: 2,
+            allowed_symbols: vec!["BTCUSDT".into(), "ETHUSDT".into()],
+            max_trades_per_minute: 3,
+        }
+    }
+
+    #[test]
+    fn test_rate_limiter() {
+        let engine = RiskEngine::new(test_config());
+        // 3 trades should succeed (max_trades_per_minute = 3)
+        for _ in 0..3 {
+            engine
+                .check_pre_trade("BTCUSDT", OrderSide::Buy, 0.01, 50000.0)
+                .unwrap();
+        }
+        // 4th trade should trigger circuit breaker
+        let result = engine.check_pre_trade("BTCUSDT", OrderSide::Buy, 0.01, 50000.0);
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, AppError::RateLimit(_)),
+            "Expected RateLimit, got: {:?}",
+            err
+        );
+    }
+
+    #[test]
+    fn test_position_limit() {
+        // max_open_positions = 1, empty whitelist (allow all)
+        let engine = RiskEngine::new(RiskConfig {
+            max_open_positions: 1,
+            allowed_symbols: vec![],
+            max_trades_per_minute: 100,
+            ..test_config()
+        });
+
+        // Open first position
+        engine
+            .check_pre_trade("BTCUSDT", OrderSide::Buy, 0.01, 50000.0)
+            .unwrap();
+        engine.record_fill(&OrderResult {
+            exchange_order_id: "1".into(),
+            client_order_id: "c1".into(),
+            symbol: "BTCUSDT".into(),
+            side: OrderSide::Buy,
+            filled_qty: 0.01,
+            avg_price: 50000.0,
+            status: OrderStatus::Filled,
+            timestamp: Utc::now(),
+            commission: 0.0,
+        });
+
+        // Second position on a different symbol should be rejected
+        let result = engine.check_pre_trade("ETHUSDT", OrderSide::Buy, 0.1, 3000.0);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::RiskViolation(_)));
+    }
+
+    #[test]
+    fn test_daily_loss_limit() {
+        let engine = RiskEngine::new(RiskConfig {
+            max_daily_loss_usd: 50.0,
+            allowed_symbols: vec![],
+            max_trades_per_minute: 100,
+            ..test_config()
+        });
+
+        // Simulate a big realized loss: buy high, sell low
+        engine.record_fill(&OrderResult {
+            exchange_order_id: "1".into(),
+            client_order_id: "c1".into(),
+            symbol: "BTCUSDT".into(),
+            side: OrderSide::Buy,
+            filled_qty: 1.0,
+            avg_price: 100.0,
+            status: OrderStatus::Filled,
+            timestamp: Utc::now(),
+            commission: 0.0,
+        });
+        // Sell at $40 -> realized PnL = (40 - 100) * 1.0 = -$60
+        engine.record_fill(&OrderResult {
+            exchange_order_id: "2".into(),
+            client_order_id: "c2".into(),
+            symbol: "BTCUSDT".into(),
+            side: OrderSide::Sell,
+            filled_qty: 1.0,
+            avg_price: 40.0,
+            status: OrderStatus::Filled,
+            timestamp: Utc::now(),
+            commission: 0.0,
+        });
+
+        // Daily PnL should now be -$60, exceeding max_daily_loss of $50
+        let result = engine.check_pre_trade("BTCUSDT", OrderSide::Buy, 0.01, 100.0);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::RiskViolation(_)));
+    }
+
+    #[test]
+    fn test_nan_rejection() {
+        let engine = RiskEngine::new(RiskConfig {
+            allowed_symbols: vec![],
+            max_trades_per_minute: 100,
+            ..test_config()
+        });
+
+        // NaN price
+        let r = engine.check_pre_trade("BTCUSDT", OrderSide::Buy, 0.01, f64::NAN);
+        assert!(r.is_err());
+        assert!(matches!(r.unwrap_err(), AppError::Validation(_)));
+
+        // Infinity quantity
+        let r = engine.check_pre_trade("BTCUSDT", OrderSide::Buy, f64::INFINITY, 100.0);
+        assert!(r.is_err());
+        assert!(matches!(r.unwrap_err(), AppError::Validation(_)));
+
+        // NaN quantity
+        let r = engine.check_pre_trade("BTCUSDT", OrderSide::Buy, f64::NAN, 100.0);
+        assert!(r.is_err());
+        assert!(matches!(r.unwrap_err(), AppError::Validation(_)));
+
+        // Infinity price
+        let r = engine.check_pre_trade("BTCUSDT", OrderSide::Buy, 0.01, f64::INFINITY);
+        assert!(r.is_err());
+        assert!(matches!(r.unwrap_err(), AppError::Validation(_)));
+    }
+
+    #[test]
+    fn test_symbol_whitelist() {
+        let engine = RiskEngine::new(test_config());
+
+        // Allowed symbol should pass
+        let r = engine.check_pre_trade("BTCUSDT", OrderSide::Buy, 0.01, 50000.0);
+        assert!(r.is_ok());
+
+        // Non-whitelisted symbol should be rejected
+        let r = engine.check_pre_trade("DOGEUSDT", OrderSide::Buy, 100.0, 0.1);
+        assert!(r.is_err());
+        assert!(matches!(r.unwrap_err(), AppError::RiskViolation(_)));
+    }
+
+    #[test]
+    fn test_quantity_sanity() {
+        let engine = RiskEngine::new(RiskConfig {
+            allowed_symbols: vec![],
+            max_trades_per_minute: 100,
+            ..test_config()
+        });
+
+        // Negative quantity
+        let r = engine.check_pre_trade("BTCUSDT", OrderSide::Buy, -1.0, 100.0);
+        assert!(r.is_err());
+        assert!(matches!(r.unwrap_err(), AppError::Validation(_)));
+
+        // Zero quantity
+        let r = engine.check_pre_trade("BTCUSDT", OrderSide::Buy, 0.0, 100.0);
+        assert!(r.is_err());
+        assert!(matches!(r.unwrap_err(), AppError::Validation(_)));
+
+        // Huge quantity (> 1e9 sanity cap)
+        let r = engine.check_pre_trade("BTCUSDT", OrderSide::Buy, 2e9, 100.0);
+        assert!(r.is_err());
+        assert!(matches!(r.unwrap_err(), AppError::Validation(_)));
+
+        // Huge price (> 1e9 sanity cap)
+        let r = engine.check_pre_trade("BTCUSDT", OrderSide::Buy, 1.0, 2e9);
+        assert!(r.is_err());
+        assert!(matches!(r.unwrap_err(), AppError::Validation(_)));
+    }
+
+    #[test]
+    fn test_daily_reset() {
+        let engine = RiskEngine::new(RiskConfig {
+            allowed_symbols: vec![],
+            max_trades_per_minute: 100,
+            ..test_config()
+        });
+
+        // Simulate some daily PnL
+        engine.record_fill(&OrderResult {
+            exchange_order_id: "1".into(),
+            client_order_id: "c1".into(),
+            symbol: "BTCUSDT".into(),
+            side: OrderSide::Buy,
+            filled_qty: 1.0,
+            avg_price: 100.0,
+            status: OrderStatus::Filled,
+            timestamp: Utc::now(),
+            commission: 0.0,
+        });
+        engine.record_fill(&OrderResult {
+            exchange_order_id: "2".into(),
+            client_order_id: "c2".into(),
+            symbol: "BTCUSDT".into(),
+            side: OrderSide::Sell,
+            filled_qty: 1.0,
+            avg_price: 110.0,
+            status: OrderStatus::Filled,
+            timestamp: Utc::now(),
+            commission: 0.0,
+        });
+
+        // Verify non-zero state
+        let snap = engine.snapshot();
+        assert!(snap.realized_daily_pnl != 0.0);
+
+        // Force reset
+        engine.force_reset_daily();
+
+        let snap = engine.snapshot();
+        assert_eq!(snap.realized_daily_pnl, 0.0);
     }
 }

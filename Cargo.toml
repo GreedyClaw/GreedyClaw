@@ -9,7 +9,7 @@ description = "GreedyClaw — AI-native trading execution gateway"
 tokio = { version = "1", features = ["full"] }
 
 # Web server
-axum = { version = "0.8", features = ["json"] }
+axum = { version = "0.8", features = ["json", "ws"] }
 tower = { version = "0.5", features = ["timeout"] }
 tower-http = { version = "0.6", features = ["trace", "cors"] }
 
@@ -70,6 +70,9 @@ prost-types = "0.13"
 tokio-stream = "0.1"
 futures = "0.3"
 backoff = { version = "0.4", features = ["tokio"] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [build-dependencies]
 tonic-build = "0.12"

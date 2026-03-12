@@ -283,6 +283,56 @@ format = "pretty"
 # grpc_x_token = "your_shyft_grpc_token"
 "#;
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_config() {
+        let risk = RiskConfig::default();
+        assert_eq!(risk.max_position_usd, 500.0);
+        assert_eq!(risk.max_daily_loss_usd, 100.0);
+        assert_eq!(risk.max_open_positions, 3);
+        assert_eq!(risk.max_trades_per_minute, 10);
+        assert!(risk.allowed_symbols.is_empty());
+
+        let exchange = ExchangeConfig::default();
+        assert_eq!(exchange.name, "binance");
+        assert!(exchange.testnet, "Default exchange should be testnet");
+
+        let solana = SolanaConfig::default();
+        assert!(solana.rpc_url.contains("mainnet"));
+    }
+
+    #[test]
+    fn test_toml_parse() {
+        // Parse the built-in DEFAULT_CONFIG_TOML
+        let config: Config = toml::from_str(DEFAULT_CONFIG_TOML)
+            .expect("DEFAULT_CONFIG_TOML should parse without error");
+
+        assert_eq!(config.server.host, "127.0.0.1");
+        assert_eq!(config.server.port, 7878);
+        assert_eq!(config.exchange.name, "binance");
+        assert!(config.exchange.testnet);
+        assert_eq!(config.risk.max_position_usd, 500.0);
+        assert_eq!(config.risk.max_daily_loss_usd, 100.0);
+        assert_eq!(config.risk.max_open_positions, 3);
+        assert_eq!(config.risk.max_trades_per_minute, 10);
+        assert_eq!(config.risk.allowed_symbols, vec!["BTCUSDT", "ETHUSDT"]);
+        assert_eq!(config.logging.level, "info");
+        assert_eq!(config.logging.format, "pretty");
+    }
+
+    #[test]
+    fn test_toml_partial_parse() {
+        // Minimal TOML — everything should use defaults
+        let config: Config = toml::from_str("").expect("Empty TOML should parse with defaults");
+        assert_eq!(config.server.port, 7878);
+        assert_eq!(config.risk.max_position_usd, 500.0);
+        assert_eq!(config.exchange.name, "binance");
+    }
+}
+
 pub const DEFAULT_ENV: &str = r#"# === Auth (required for all exchanges) ===
 GREEDYCLAW_AUTH_TOKEN=change_me_to_random_hex_token
 

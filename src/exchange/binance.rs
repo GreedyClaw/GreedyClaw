@@ -302,6 +302,47 @@ impl Exchange for BinanceExchange {
         })
     }
 
+    async fn get_ohlc(&self, symbol: &str, timeframe: &str, limit: u32) -> Result<Vec<Candle>, AppError> {
+        // Map common timeframe aliases to Binance format
+        let interval = match timeframe {
+            "1m" | "1min" => "1m",
+            "5m" | "5min" => "5m",
+            "15m" | "15min" => "15m",
+            "30m" | "30min" => "30m",
+            "1h" | "1H" | "60m" => "1h",
+            "4h" | "4H" => "4h",
+            "1d" | "1D" | "daily" => "1d",
+            "1w" | "1W" | "weekly" => "1w",
+            other => other,
+        };
+
+        let limit_str = limit.min(1000).to_string();
+        let url = format!(
+            "{}/api/v3/klines?symbol={}&interval={}&limit={}",
+            self.base_url, symbol, interval, limit_str
+        );
+
+        let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;
+
+        let arr = resp.as_array().ok_or_else(|| AppError::Exchange(
+            format!("Invalid klines response for {symbol}")
+        ))?;
+
+        let candles: Vec<Candle> = arr.iter().filter_map(|k| {
+            let k = k.as_array()?;
+            Some(Candle {
+                timestamp: k.first()?.as_i64()? / 1000, // ms -> s
+                open: k.get(1)?.as_str()?.parse().ok()?,
+                high: k.get(2)?.as_str()?.parse().ok()?,
+                low: k.get(3)?.as_str()?.parse().ok()?,
+                close: k.get(4)?.as_str()?.parse().ok()?,
+                volume: k.get(5)?.as_str()?.parse().ok()?,
+            })
+        }).collect();
+
+        Ok(candles)
+    }
+
     async fn get_price(&self, symbol: &str) -> Result<f64, AppError> {
         let url = format!("{}/api/v3/ticker/price?symbol={}", self.base_url, symbol);
         let resp: serde_json::Value = self.client.get(&url).send().await?.json().await?;

@@ -366,6 +366,33 @@ impl Exchange for Mt5Exchange {
         })
     }
 
+    async fn get_ohlc(&self, symbol: &str, timeframe: &str, limit: u32) -> Result<Vec<Candle>, AppError> {
+        let resp = self
+            .client
+            .get(format!(
+                "{}/ohlc/{}?timeframe={}&limit={}",
+                self.bridge_url, symbol, timeframe, limit.min(1000)
+            ))
+            .send()
+            .await
+            .map_err(|e| AppError::ExchangeUnreachable(format!("MT5 bridge: {e}")))?;
+
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            let detail = serde_json::from_str::<BridgeError>(&body)
+                .map(|e| e.detail)
+                .unwrap_or(body);
+            return Err(AppError::Exchange(format!("MT5 OHLC failed: {detail}")));
+        }
+
+        let candles: Vec<Candle> = resp
+            .json()
+            .await
+            .map_err(|e| AppError::Exchange(format!("MT5 OHLC parse error: {e}")))?;
+
+        Ok(candles)
+    }
+
     async fn get_price(&self, symbol: &str) -> Result<f64, AppError> {
         let resp = self
             .client

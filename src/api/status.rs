@@ -2,11 +2,24 @@ use crate::api::types::*;
 use crate::error::AppError;
 use crate::exchange::Exchange;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::Json;
+use serde::Deserialize;
 use std::sync::Arc;
 
 use super::AppState;
+
+/// Query params for OHLC endpoint.
+#[derive(Debug, Deserialize)]
+pub struct OhlcQuery {
+    #[serde(default = "default_timeframe")]
+    pub timeframe: String,
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+}
+
+fn default_timeframe() -> String { "1h".into() }
+fn default_limit() -> u32 { 100 }
 
 /// GET /status — health check + current risk state.
 pub async fn handle_status<E: Exchange>(
@@ -103,5 +116,22 @@ pub async fn handle_cancel<E: Exchange>(
     Ok(Json(serde_json::json!({
         "success": true,
         "cancelled": order_id,
+    })))
+}
+
+/// GET /ohlc/:symbol — OHLCV candle data.
+pub async fn handle_ohlc<E: Exchange>(
+    State(state): State<Arc<AppState<E>>>,
+    Path(symbol): Path<String>,
+    Query(params): Query<OhlcQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    let symbol = symbol.to_uppercase();
+    let limit = params.limit.min(1000).max(1);
+    let candles = state.exchange.get_ohlc(&symbol, &params.timeframe, limit).await?;
+    Ok(Json(serde_json::json!({
+        "symbol": symbol,
+        "timeframe": params.timeframe,
+        "count": candles.len(),
+        "candles": candles,
     })))
 }

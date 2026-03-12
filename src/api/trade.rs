@@ -3,11 +3,12 @@ use crate::audit::AuditEntry;
 use crate::error::AppError;
 use crate::exchange::types::*;
 use crate::exchange::Exchange;
+use crate::ws::WsEvent;
 
 use axum::extract::State;
 use axum::Json;
 use std::sync::Arc;
-use tracing::error;
+use tracing::{debug, error};
 use uuid::Uuid;
 
 use super::AppState;
@@ -79,7 +80,33 @@ pub async fn handle_trade<E: Exchange>(
                 }
             }
 
-            // 8. Respond
+            // 8. Broadcast WebSocket events
+            let _ = state.ws_tx.send(WsEvent::TradeExecuted {
+                symbol: fill.symbol.clone(),
+                side: fill.side,
+                filled_qty: fill.filled_qty,
+                avg_price: fill.avg_price,
+                status: fill.status,
+                commission: fill.commission,
+                timestamp: fill.timestamp,
+                risk: risk_snap.clone(),
+            });
+            let _ = state.ws_tx.send(WsEvent::PositionUpdate {
+                positions: state.risk.get_positions(),
+            });
+            // Check risk thresholds for alerts
+            if risk_snap.remaining_daily_limit < risk_snap.realized_daily_pnl.abs() * 0.2 + 1.0 {
+                let _ = state.ws_tx.send(WsEvent::RiskAlert {
+                    level: "warning".into(),
+                    message: format!(
+                        "Daily loss limit approaching: ${:.2} remaining",
+                        risk_snap.remaining_daily_limit
+                    ),
+                });
+            }
+            debug!("[WS] Broadcast TradeExecuted + PositionUpdate");
+
+            // 9. Respond
             Ok(Json(TradeResponse {
                 success: true,
                 order_id: fill.exchange_order_id,

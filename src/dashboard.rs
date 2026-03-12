@@ -357,6 +357,44 @@ tr:hover td { background: var(--bg3); }
 .scanner-stat .val { font-size: 18px; font-weight: 700; margin-top: 2px; }
 .mint-short { font-family: monospace; font-size: 12px; }
 
+/* Toast notifications */
+.toast-container {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast {
+  pointer-events: auto;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  max-width: 360px;
+  animation: toast-in 0.3s ease, toast-out 0.3s ease 4.7s forwards;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.toast.warning { border-color: var(--yellow); }
+.toast.danger { border-color: var(--red); }
+.toast.success { border-color: var(--green); }
+.toast .toast-title { font-weight: 600; margin-bottom: 4px; }
+.toast.warning .toast-title { color: var(--yellow); }
+.toast.danger .toast-title { color: var(--red); }
+.toast.success .toast-title { color: var(--green); }
+@keyframes toast-in { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes toast-out { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
+
+/* WS flash effect */
+.flash-green { animation: flash-g 0.6s ease; }
+.flash-red { animation: flash-r 0.6s ease; }
+@keyframes flash-g { 0% { background: rgba(63,185,80,0.25); } 100% { background: transparent; } }
+@keyframes flash-r { 0% { background: rgba(248,81,73,0.25); } 100% { background: transparent; } }
+
 /* Loading / error */
 .loading {
   text-align: center;
@@ -380,9 +418,11 @@ tr:hover td { background: var(--bg3); }
 <div class="header">
   <div class="logo"><span>Greedy</span>Claw</div>
   <div class="header-right">
+    <span class="status-dot" id="wsDot" title="WebSocket: disconnected"></span>
+    <span class="badge" id="wsLabel" style="font-size:11px;color:var(--text2)">WS off</span>
     <span class="status-dot" id="statusDot"></span>
-    <span class="badge" id="exchangeBadge">—</span>
-    <span class="badge" id="versionBadge">—</span>
+    <span class="badge" id="exchangeBadge">---</span>
+    <span class="badge" id="versionBadge">---</span>
   </div>
 </div>
 
@@ -392,11 +432,12 @@ tr:hover td { background: var(--bg3); }
   <button onclick="connect()">Connect</button>
   <div class="auto-refresh">
     <input type="checkbox" id="autoRefresh" checked />
-    <label for="autoRefresh">Auto-refresh 10s</label>
+    <label for="autoRefresh" id="refreshLabel">Auto-refresh 10s</label>
   </div>
 </div>
 
 <div id="errorBox" style="padding: 0 24px; margin-top: 12px;"></div>
+<div class="toast-container" id="toastContainer"></div>
 
 <div class="container" id="main" style="display:none;">
   <!-- Tabs -->
@@ -530,6 +571,12 @@ let token = localStorage.getItem('gc_token') || '';
 let refreshTimer = null;
 let equityChart = null;
 
+// WebSocket state
+let ws = null;
+let wsReconnectDelay = 1000;
+const WS_MAX_RECONNECT = 30000;
+let wsConnected = false;
+
 document.getElementById('tokenInput').value = token;
 
 if (token) connect();
@@ -554,10 +601,158 @@ async function connect() {
     await refresh();
     document.getElementById('main').style.display = 'block';
     startAutoRefresh();
+    connectWebSocket();
   } catch(e) {
     showError('Connection failed: ' + e.message);
   }
 }
+
+// --- WebSocket ---
+function connectWebSocket() {
+  if (ws && (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN)) return;
+
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = proto + '//' + location.host + '/ws?token=' + encodeURIComponent(token);
+
+  ws = new WebSocket(url);
+
+  ws.onopen = function() {
+    wsConnected = true;
+    wsReconnectDelay = 1000; // reset backoff
+    updateWsIndicator(true);
+    // Increase polling interval when WS is connected (fallback only)
+    restartPolling(60000);
+  };
+
+  ws.onmessage = function(evt) {
+    try {
+      const event = JSON.parse(evt.data);
+      handleWsEvent(event);
+    } catch(e) { /* ignore malformed */ }
+  };
+
+  ws.onclose = function(evt) {
+    wsConnected = false;
+    updateWsIndicator(false);
+    // Restore fast polling as fallback
+    restartPolling(10000);
+    // Reconnect with exponential backoff
+    if (token) {
+      setTimeout(connectWebSocket, wsReconnectDelay);
+      wsReconnectDelay = Math.min(wsReconnectDelay * 2, WS_MAX_RECONNECT);
+    }
+  };
+
+  ws.onerror = function() {
+    // onclose will fire after this
+  };
+}
+
+function handleWsEvent(event) {
+  switch (event.type) {
+    case 'snapshot':
+      if (event.risk) updateRisk(event.risk);
+      if (event.positions) updatePositions(event.positions);
+      break;
+
+    case 'trade_executed':
+      // Update stats cards with risk snapshot
+      if (event.risk) updateRisk(event.risk);
+      // Flash the daily PnL card
+      const pnlCard = document.getElementById('dailyPnl');
+      if (pnlCard) {
+        const cls = event.side === 'buy' ? 'flash-green' : 'flash-red';
+        pnlCard.parentElement.classList.add(cls);
+        setTimeout(() => pnlCard.parentElement.classList.remove(cls), 700);
+      }
+      // Prepend to trades table
+      prependTrade(event);
+      showToast('success', 'Trade Executed',
+        event.side.toUpperCase() + ' ' + (event.filled_qty || 0).toFixed(6) + ' ' + (event.symbol || '') + ' @ $' + (event.avg_price || 0).toFixed(4));
+      break;
+
+    case 'position_update':
+      if (event.positions) updatePositions(event.positions);
+      break;
+
+    case 'risk_alert':
+      showToast(event.level === 'critical' ? 'danger' : 'warning', 'Risk Alert', event.message || '');
+      break;
+
+    case 'price_update':
+      // Could update a price ticker — for now just note it
+      break;
+
+    case 'balance_update':
+      // Update balance if displayed
+      break;
+  }
+}
+
+function prependTrade(t) {
+  const container = document.getElementById('tradesTable');
+  if (!container) return;
+  // If it shows the empty message, clear it first
+  const empty = container.querySelector('.empty');
+  if (empty) container.innerHTML = '<table><thead><tr><th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th>Status</th><th>Order ID</th></tr></thead><tbody></tbody></table>';
+
+  let tbody = container.querySelector('tbody');
+  if (!tbody) return;
+
+  const sideClass = t.side === 'buy' ? 'side-buy' : 'side-sell';
+  const time = (t.timestamp || '').replace('T', ' ').substring(0, 19);
+  const statusStr = t.status || '';
+  const statusClass = statusStr.toLowerCase().includes('filled') ? 'status-filled'
+    : statusStr.toLowerCase().includes('rejected') ? 'status-rejected' : '';
+
+  const tr = document.createElement('tr');
+  tr.className = t.side === 'buy' ? 'flash-green' : 'flash-red';
+  tr.innerHTML = '<td>' + escHtml(time) + '</td>'
+    + '<td>' + escHtml(t.symbol || '') + '</td>'
+    + '<td class="' + sideClass + '">' + escHtml(t.side || '').toUpperCase() + '</td>'
+    + '<td>' + (t.filled_qty || 0).toFixed(6) + '</td>'
+    + '<td>$' + (t.avg_price || 0).toFixed(4) + '</td>'
+    + '<td class="' + statusClass + '">' + escHtml(statusStr) + '</td>'
+    + '<td style="font-size:11px;color:var(--text2)">ws-live</td>';
+  tbody.insertBefore(tr, tbody.firstChild);
+}
+
+function updateWsIndicator(connected) {
+  const dot = document.getElementById('wsDot');
+  const label = document.getElementById('wsLabel');
+  if (dot) {
+    dot.className = 'status-dot ' + (connected ? 'ok' : 'err');
+    dot.title = 'WebSocket: ' + (connected ? 'connected' : 'disconnected');
+  }
+  if (label) {
+    label.textContent = connected ? 'WS live' : 'WS off';
+    label.style.color = connected ? 'var(--green)' : 'var(--text2)';
+  }
+}
+
+function showToast(level, title, message) {
+  const container = document.getElementById('toastContainer');
+  if (!container) return;
+  const el = document.createElement('div');
+  el.className = 'toast ' + level;
+  el.innerHTML = '<div class="toast-title">' + escHtml(title) + '</div><div>' + escHtml(message) + '</div>';
+  container.appendChild(el);
+  setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 5000);
+}
+
+function restartPolling(intervalMs) {
+  if (refreshTimer) clearInterval(refreshTimer);
+  refreshTimer = setInterval(async () => {
+    if (!document.getElementById('autoRefresh').checked) return;
+    try {
+      await refresh();
+      if (document.getElementById('tab-scanner').classList.contains('active')) {
+        await refreshScanner();
+      }
+    } catch(e) { /* silent */ }
+  }, intervalMs);
+}
+// --- End WebSocket ---
 
 function showError(msg) {
   document.getElementById('errorBox').innerHTML = '<div class="error-msg">' + escHtml(msg) + '</div>';
@@ -882,16 +1077,7 @@ function shortMint(m) {
 }
 
 function startAutoRefresh() {
-  if (refreshTimer) clearInterval(refreshTimer);
-  refreshTimer = setInterval(async () => {
-    if (!document.getElementById('autoRefresh').checked) return;
-    try {
-      await refresh();
-      if (document.getElementById('tab-scanner').classList.contains('active')) {
-        await refreshScanner();
-      }
-    } catch(e) { /* silent */ }
-  }, 10000);
+  restartPolling(10000);
 }
 </script>
 </body>
