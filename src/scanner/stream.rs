@@ -112,6 +112,7 @@ pub async fn run_scanner(
     info!("[SCANNER] Stopped.");
 }
 
+#[allow(clippy::result_large_err)]
 async fn connect_and_stream(
     endpoint: &str,
     x_token: &str,

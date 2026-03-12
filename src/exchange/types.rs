@@ -48,6 +48,7 @@ pub enum OrderStatus {
 pub struct OrderRequest {
     pub symbol: String,
     pub side: OrderSide,
+    #[allow(dead_code)]
     pub order_type: OrderType,
     pub quantity: f64,
     pub price: Option<f64>,

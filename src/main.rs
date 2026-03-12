@@ -10,14 +10,17 @@ mod server;
 mod solana;
 
 /// gRPC proto modules (Yellowstone/Geyser for PumpFun streaming).
+#[allow(clippy::large_enum_variant)]
 pub mod proto {
     pub mod solana {
         pub mod storage {
+            #[allow(clippy::large_enum_variant)]
             pub mod confirmed_block {
                 include!(concat!(env!("OUT_DIR"), "/solana.storage.confirmed_block.rs"));
             }
         }
     }
+    #[allow(clippy::large_enum_variant)]
     pub mod geyser {
         tonic::include_proto!("geyser");
     }

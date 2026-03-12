@@ -20,9 +20,11 @@ pub enum AppError {
     Validation(String),
 
     #[error("Not found: {0}")]
+    #[allow(dead_code)]
     NotFound(String),
 
     #[error("Unauthorized")]
+    #[allow(dead_code)]
     Unauthorized,
 
     #[error("Exchange error: {0}")]
@@ -52,7 +54,7 @@ impl IntoResponse for AppError {
                 "EXCHANGE_UNREACHABLE",
                 Some("Exchange API is down or unreachable. Retry in a few seconds.".into()),
             ),
-            AppError::ExchangeApi { code: c, msg } => {
+            AppError::ExchangeApi { code: c, msg: _ } => {
                 let sug = match *c {
                     -1013 => Some("Order quantity is below minimum. Increase amount.".into()),
                     -1021 => Some("Timestamp sync issue. Server clock may be off.".into()),
@@ -60,7 +62,6 @@ impl IntoResponse for AppError {
                     -1100 => Some("Invalid parameter. Check symbol name and amount format.".into()),
                     _ => Some(format!("Binance error {}. Check Binance API docs.", c)),
                 };
-                let _ = msg; // used in Display
                 (StatusCode::BAD_GATEWAY, "EXCHANGE_ERROR", sug)
             }
             AppError::RiskViolation(_) => (

@@ -98,6 +98,7 @@ pub async fn get_transaction_status(
 
 /// Bonding curve state from on-chain account data.
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct CurveState {
     pub virtual_token_reserves: u64,
     pub virtual_sol_reserves: u64,
@@ -174,6 +175,7 @@ pub async fn get_sol_balance(
 }
 
 /// Get token balance (SPL) for a wallet via RPC.
+#[allow(dead_code)]
 pub async fn get_token_balance(
     client: &reqwest::Client,
     rpc_url: &str,

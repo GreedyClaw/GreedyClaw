@@ -40,6 +40,7 @@ impl Mt5Exchange {
     }
 
     /// Check bridge is reachable.
+    #[allow(dead_code)]
     async fn health_check(&self) -> Result<(), AppError> {
         let resp = self
             .client
@@ -91,6 +92,7 @@ struct BridgeOrderResult {
 
 #[derive(Deserialize)]
 struct BridgePosition {
+    #[allow(dead_code)]
     ticket: u64,
     symbol: String,
     side: String,
@@ -426,6 +428,7 @@ impl Mt5Exchange {
     }
 
     /// Close a position by ticket (for dashboard/API use).
+    #[allow(dead_code)]
     pub async fn close_position(&self, ticket: u64) -> Result<OrderResult, AppError> {
         let resp = self
             .client

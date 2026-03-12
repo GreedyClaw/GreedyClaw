@@ -1,88 +1,249 @@
 <p align="center">
-  <img src="src/clawicon.png" alt="GreedyClaw" width="200"/>
+  <img src="src/clawicon.png" alt="GreedyClaw" width="180"/>
 </p>
 
-<h3 align="center">Autonomous AI Trading Agent + Execution Gateway</h3>
+<h1 align="center">GreedyClaw</h1>
+
+<h3 align="center">Autonomous AI Trading Agent + Hardened Execution Gateway</h3>
 
 <p align="center">
-  <strong>AI researches. AI decides. GreedyClaw executes.</strong><br/>
-  Self-hosted autonomous trading agent with Rust execution gateway.<br/>
-  <strong>Security-first</strong> &bull; <strong>6 LLM providers</strong> &bull; <strong>100+ exchanges</strong> &bull; crypto, forex, gold, stocks, DeFi.
+  <strong>AI researches markets. AI makes decisions. Rust executes trades.</strong><br/>
+  Self-hosted autonomous trading system with 6-layer security architecture.<br/>
 </p>
 
 <p align="center">
-  <a href="https://github.com/GreedyClaw/GreedyClaw/actions"><img src="https://img.shields.io/github/actions/workflow/status/GreedyClaw/GreedyClaw/ci.yml?style=for-the-badge&label=build" alt="Build"></a>
+  <a href="https://github.com/GreedyClaw/GreedyClaw/actions"><img src="https://img.shields.io/github/actions/workflow/status/GreedyClaw/GreedyClaw/ci.yml?style=for-the-badge&label=CI" alt="CI"></a>
   <a href="https://github.com/GreedyClaw/GreedyClaw/releases"><img src="https://img.shields.io/github/v/release/GreedyClaw/GreedyClaw?style=for-the-badge&color=orange" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=for-the-badge" alt="License"></a>
   <a href="https://github.com/GreedyClaw/GreedyClaw/stargazers"><img src="https://img.shields.io/github/stars/GreedyClaw/GreedyClaw?style=for-the-badge&color=yellow" alt="Stars"></a>
 </p>
 
 <p align="center">
+  <a href="#why-greedyclaw">Why</a> &bull;
   <a href="#quickstart">Quickstart</a> &bull;
+  <a href="#architecture">Architecture</a> &bull;
   <a href="#ai-brain">AI Brain</a> &bull;
   <a href="#supported-exchanges">Exchanges</a> &bull;
-  <a href="#security--why-greedyclaw-is-built-different">Security</a> &bull;
+  <a href="#security">Security</a> &bull;
   <a href="#risk-engine">Risk Engine</a> &bull;
   <a href="#mcp-server">MCP</a> &bull;
   <a href="#scanner">Scanner</a> &bull;
   <a href="#docker">Docker</a> &bull;
+  <a href="#api">API</a> &bull;
   <a href="#roadmap">Roadmap</a>
 </p>
 
 ---
 
-## The Problem
+## Why GreedyClaw
 
-Every AI trading project reinvents the same wheel: exchange authentication, order signing, position tracking, risk limits. Meanwhile, one hallucination loop can drain your entire account in seconds. And most AI agent frameworks? [15,200 instances vulnerable to remote code execution](https://github.com/GreedyClaw/GreedyClaw#security--why-greedyclaw-is-built-different).
+Every AI trading project reinvents the same wheel: exchange auth, order signing, position tracking, risk limits. Meanwhile, one hallucination loop drains your account in seconds. Most AI agent frameworks? **[15,200 instances vulnerable to remote code execution](https://www.oligo.security/blog/ai-in-development-the-emerging-risks-of-mcp).**
 
-**GreedyClaw** is a fully autonomous AI trading system built with **security as the #1 priority**:
-- **Brain** (Python) — researches markets, analyzes news, makes decisions using any LLM
-- **Gateway** (Rust) — executes trades, enforces risk limits, keeps audit trail
-- **Isolation** — Brain cannot access filesystem, shell, or exchanges directly. All trades pass through mandatory risk checks
+GreedyClaw exists because **AI + money requires defense-in-depth, not "hope nothing goes wrong":**
+
+| Component | Language | Purpose |
+|-----------|----------|---------|
+| **Brain** | Python | Researches markets, scrapes news, reasons with any LLM, makes trading decisions |
+| **Gateway** | Rust | Executes trades, enforces risk limits via mandatory engine, logs every action with HMAC-signed audit trail |
+| **Isolation** | Architecture | Brain has zero direct access to exchanges, filesystem, or shell. All trades pass through Gateway's risk checks. Even if the LLM is fully compromised by prompt injection, the worst case is a trade that passes risk limits — not a system takeover |
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                        GreedyClaw System                                 │
-│                                                                          │
-│  ┌─────────────────────────────┐       ┌──────────────────────────────┐ │
-│  │      Brain (Python)         │       │      Gateway (Rust)          │ │
-│  │                             │       │                              │ │
-│  │  Web Scraping               │       │  Auth Middleware             │ │
-│  │  ├─ Forex Factory           │ POST  │  Risk Engine                 │ │
-│  │  ├─ Reuters / Bloomberg     │ /trade│  ├─ Symbol whitelist         │ │
-│  │  └─ Any URL                 │──────►│  ├─ Position limits         │ │
-│  │                             │       │  ├─ Daily loss cap          │ │
-│  │  LLM Analysis (6 providers) │       │  └─ Hallucination detector  │ │
-│  │  ├─ Anthropic (Claude)      │       │                              │ │
-│  │  ├─ OpenAI (GPT)            │       │  Exchange Layer              │──► Binance
-│  │  ├─ Google (Gemini)         │       │  ├─ Binance (native)        │──► MT5 (Forex)
-│  │  ├─ DeepSeek                │       │  ├─ PumpFun (native)        │──► Bybit
-│  │  ├─ OpenRouter (200+)       │       │  ├─ MT5 (bridge)            │──► OKX
-│  │  └─ Ollama (local)          │       │  └─ CCXT (100+ exchanges)   │──► 100+ more
-│  │                             │       │                              │ │
-│  │  Skills (SKILL.md)          │       │  Audit Log                   │ │
-│  │  ├─ forex-fundamentals      │       │  └─ SQLite + JSONL           │ │
-│  │  ├─ xauusd-sentiment        │       │                              │ │
-│  │  └─ crypto-momentum         │       │  Dashboard (web UI)          │ │
-│  └─────────────────────────────┘       └──────────────────────────────┘ │
-└──────────────────────────────────────────────────────────────────────────┘
+            ┌──────────────────────────────────────────────────────────────────┐
+            │                         GreedyClaw                               │
+            │                                                                  │
+ Forex      │  ┌──── Brain (Python) ─────┐     ┌──── Gateway (Rust) ──────┐  │
+ Factory ◄──┤  │                         │     │                          │  ├──► Binance
+ Reuters ◄──┤  │  Web Scraping           │     │  Constant-time Auth      │  ├──► MT5 (Forex/Gold)
+ Any URL ◄──┤  │  6 LLM Providers        │     │  Risk Engine (mandatory) │  ├──► Bybit
+            │  │  Trading Skills (.md)    │     │  HMAC-SHA256 Audit Log   │  ├──► OKX
+            │  │  Decision Logger         │POST │  1MB Body Limit          │  ├──► Kraken
+ Claude  ◄──┤  │                         │────►│  NaN/Inf Rejection       │  ├──► PumpFun (Solana)
+ GPT-4o  ◄──┤  │  SSRF Protection        │/trade  Error Sanitization      │  ├──► PumpSwap (Solana)
+ Gemini  ◄──┤  │  Confidence Gate (≥70%) │     │  Rate Limiter (429)      │  ├──► 100+ via CCXT
+            │  └─────────────────────────┘     └──────────────────────────┘  │
+            └──────────────────────────────────────────────────────────────────┘
 ```
+
+## Quickstart
+
+### Docker (recommended)
+
+```bash
+git clone https://github.com/GreedyClaw/GreedyClaw.git && cd GreedyClaw
+cp .env.example .env && nano .env   # Set API keys
+docker-compose up                    # Gateway + Brain running
+```
+
+### One-line install
+
+```powershell
+# Windows (PowerShell)
+irm https://raw.githubusercontent.com/GreedyClaw/GreedyClaw/main/install.ps1 | iex
+
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/GreedyClaw/GreedyClaw/main/install.sh | bash
+```
+
+### Manual
+
+```bash
+git clone https://github.com/GreedyClaw/GreedyClaw.git && cd GreedyClaw
+cargo build --release
+./target/release/greedyclaw init      # Creates ~/.greedyclaw/ with crypto-random auth token
+nano ~/.greedyclaw/.env               # Add exchange + LLM API keys
+greedyclaw serve                      # Gateway on 127.0.0.1:7878
+```
+
+### First trade
+
+```bash
+# From any language, any framework, any AI agent:
+curl -X POST http://127.0.0.1:7878/trade \
+  -H "Authorization: Bearer your_token" \
+  -H "Content-Type: application/json" \
+  -d '{"action": "buy", "symbol": "BTCUSDT", "amount": 0.001}'
+```
+
+---
+
+## Architecture
+
+```
+GreedyClaw/
+├── src/                            # Rust Gateway (compiled binary)
+│   ├── main.rs                     #   CLI: init, serve, trade
+│   ├── server.rs                   #   Axum router + constant-time auth middleware
+│   ├── risk.rs                     #   Mandatory risk engine (cannot be disabled)
+│   ├── audit.rs                    #   SQLite WAL + JSONL dual-write + HMAC-SHA256
+│   ├── error.rs                    #   LLM-friendly errors (sanitized, no internals leaked)
+│   ├── config.rs                   #   TOML + .env config
+│   ├── dashboard.rs                #   Embedded HTML/JS trading dashboard
+│   ├── exchange/
+│   │   ├── mod.rs                  #   Exchange trait (5 async methods)
+│   │   ├── binance.rs              #   Binance REST + HMAC-SHA256
+│   │   ├── pumpfun.rs              #   PumpFun bonding curve (Solana)
+│   │   ├── pumpswap.rs             #   PumpSwap AMM (Solana)
+│   │   ├── mt5.rs                  #   MetaTrader 5 (via Python bridge)
+│   │   └── ccxt.rs                 #   CCXT 100+ exchanges (via Python bridge)
+│   ├── scanner/                    #   PumpFun gRPC token scanner
+│   ├── api/                        #   REST API handlers
+│   └── solana/                     #   Ed25519 wallet, RPC, TX building
+│
+├── brain/                          # Python AI Agent
+│   ├── agent.py                    #   Core loop: observe → think → act
+│   ├── llm.py                      #   Multi-provider LLM (6 providers, auto-failover)
+│   ├── tools.py                    #   8 tools for LLM reasoning + SSRF protection
+│   ├── scraper.py                  #   Web scraping (Forex Factory, Investing.com)
+│   ├── memory.py                   #   Session + decision persistence (JSONL)
+│   └── skills/                     #   Trading strategies as markdown
+│       ├── forex-fundamentals/     #     Economic calendar trading
+│       ├── xauusd-sentiment/       #     Gold sentiment analysis
+│       └── crypto-momentum/        #     Crypto momentum trading
+│
+├── mt5-bridge/                     # Python bridges
+│   ├── mt5_bridge.py               #   MT5 FastAPI bridge (:7879)
+│   └── ccxt_bridge.py              #   CCXT FastAPI bridge (:7880)
+│
+├── integrations/mcp-server/        # MCP server (12 tools for Claude/Cursor/VS Code)
+├── Dockerfile + docker-compose.yml # Full stack deployment
+├── install.sh / install.ps1        # One-line installers
+└── WIKI/                           # Documentation (25 pages)
+```
+
+---
+
+## AI Brain
+
+The Brain is a fully autonomous Python agent. It researches markets, analyzes news, makes decisions, and executes trades — all without human intervention.
+
+### Decision loop
+
+```
+Every 15 minutes (configurable):
+  1. OBSERVE  — GET /positions, /balance, /status → current state
+  2. RESEARCH — Scrape Forex Factory, Reuters, Investing.com, web search
+  3. ANALYZE  — Feed everything to LLM with trading skill context
+  4. DECIDE   — LLM outputs: action + confidence (0-100) + reasoning
+  5. LOG      — Record decision to decisions.jsonl (always, even for "hold")
+  6. ACT      — If confidence ≥ 70%, execute trade via Gateway
+                 If confidence < 70%, enforced in CODE (not just prompt)
+```
+
+### Security gates
+
+The Brain enforces safety at the **code level**, not just via prompt instructions:
+
+- **Confidence threshold** — `agent.py` blocks `POST /trade` calls unless `log_decision` was called with `confidence >= 70`. Even if the LLM ignores the prompt rule, the code blocks the trade.
+- **SSRF protection** — `tools.py` blocks `fetch_url` calls to `127.x`, `10.x`, `192.168.x`, `169.254.x`, metadata endpoints. DNS resolution is checked against private IP ranges.
+- **API key hygiene** — Google API key sent via `x-goog-api-key` header, never embedded in URLs (prevents leakage via proxy logs).
+
+### 6 LLM providers with automatic failover
+
+| Priority | Provider | Env Variable | Default Model |
+|----------|----------|-------------|---------------|
+| 0 | **Anthropic** | `ANTHROPIC_API_KEY` | Claude Sonnet 4 |
+| 1 | **OpenAI** | `OPENAI_API_KEY` | GPT-4o |
+| 2 | **Google** | `GOOGLE_API_KEY` | Gemini 2.5 Flash |
+| 3 | **DeepSeek** | `DEEPSEEK_API_KEY` | DeepSeek Chat |
+| 5 | **OpenRouter** | `OPENROUTER_API_KEY` | 200+ models |
+| 10 | **Ollama** | `OLLAMA_URL` | Llama 3.1 70B (local) |
+
+Set multiple keys — if Claude is down, Brain auto-fails over to GPT, then Gemini, etc.
+
+### Skills (trading strategies as markdown)
+
+Skills are `SKILL.md` files that teach the LLM *how* to trade specific markets:
+
+| Skill | Strategy |
+|-------|----------|
+| `forex-fundamentals` | Trade around economic events (NFP, CPI, FOMC, rate decisions) |
+| `xauusd-sentiment` | Gold scoring: Fed policy + DXY + geopolitics + ETF flows |
+| `crypto-momentum` | BTC/ETH momentum: ETF flows + Fear/Greed + on-chain metrics |
+
+Create your own: `brain/skills/your-strategy/SKILL.md` — the agent loads it automatically.
+
+### Agent tools
+
+| Tool | Description |
+|------|-------------|
+| `trade` | Execute buy/sell via Gateway (blocked if confidence < 70) |
+| `get_price` | Current bid/ask |
+| `get_positions` | Open positions + unrealized PnL |
+| `get_balance` | Account equity + margin |
+| `get_risk_status` | Risk engine snapshot |
+| `web_search` | DuckDuckGo search (no API key) |
+| `fetch_url` | Extract text from URL (SSRF-protected) |
+| `log_decision` | Record reasoning + confidence (required before trading) |
+
+### Setup & run
+
+```bash
+cd brain && pip install -r requirements.txt
+python -m brain --setup            # Interactive onboarding wizard
+python -m brain --loop             # Autonomous mode (every 15 min)
+```
+
+---
 
 ## Supported Exchanges
 
-### Native (built-in, zero dependencies)
+### Native (zero dependencies, built into Rust binary)
 
-| Exchange | Markets | Status |
-|----------|---------|--------|
-| **Binance** | BTC, ETH, 500+ crypto pairs | Ready |
-| **PumpFun** | Solana bonding curve memecoins | Ready |
-| **PumpSwap** | Solana AMM graduated tokens | Ready |
+| Exchange | Markets | Protocol |
+|----------|---------|----------|
+| **Binance** | 500+ crypto pairs | REST + HMAC-SHA256 |
+| **PumpFun** | Solana bonding curve memecoins | RPC + Ed25519 |
+| **PumpSwap** | Solana AMM graduated tokens | RPC + Ed25519 |
 
 ### MetaTrader 5 (via Python bridge)
 
-| Exchange | Markets | Status |
-|----------|---------|--------|
-| **MT5** | Forex (EURUSD, GBPUSD...), Gold (XAUUSD), Indices, Stocks, Crypto CFD | Ready |
+| Markets | Instruments |
+|---------|-------------|
+| **Forex** | EURUSD, GBPUSD, USDJPY, 50+ pairs |
+| **Gold & Metals** | XAUUSD, XAGUSD |
+| **Indices** | US500, US30, GER40 |
+| **Stocks** | AAPL, TSLA, AMZN (via MT5 broker) |
+| **Crypto CFD** | BTCUSD, ETHUSD |
 
 ### CCXT (via Python bridge — 100+ exchanges)
 
@@ -92,151 +253,111 @@ Every AI trading project reinvents the same wheel: exchange authentication, orde
 | **OKX** | Spot + Futures | | **KuCoin** | Spot + Futures |
 | **Kraken** | Spot + Margin | | **Bitget** | Spot + Futures |
 | **Coinbase** | Spot | | **MEXC** | Spot + Futures |
-| **HTX** | Spot + Futures | | **+ 90 more** | [Full list](https://github.com/ccxt/ccxt/wiki/Exchange-Markets) |
+| **HTX** | Spot + Futures | | **[90+ more](https://github.com/ccxt/ccxt)** | All types |
 
-> **One API to rule them all.** Your AI agent calls `POST /trade` — GreedyClaw routes to any exchange.
+> **One API, any market.** Your agent calls `POST /trade` — GreedyClaw routes to the right exchange.
 
-## Quickstart
+---
 
-### One-line install
+## Security
 
-**Windows (PowerShell):**
-```powershell
-irm https://raw.githubusercontent.com/GreedyClaw/GreedyClaw/main/install.ps1 | iex
+GreedyClaw implements **6 defense layers**. Every layer is active by default. There is no "disable security" flag.
+
+### Layer 1: Network isolation
+
+- Binds to `127.0.0.1` only — invisible on the network
+- No mDNS broadcast, no admin panel, no discovery
+- Zero attack surface from outside the machine
+
+### Layer 2: Authentication
+
+- `Authorization: Bearer <token>` on **every** request (no exceptions)
+- **Constant-time comparison** (`subtle` crate) — prevents timing side-channel attacks
+- **Crypto-random 64-char hex token** generated on `greedyclaw init` (`rand` crate)
+- Token stored in `~/.greedyclaw/.env` — never in URLs, never in browser storage
+- 1MB request body limit — prevents OOM from oversized payloads
+
+### Layer 3: Input validation
+
+- NaN, Infinity, negative values **rejected** before reaching exchange
+- $1B sanity cap on quantity and price — prevents f64 overflow exploits
+- Symbol length capped at 20 chars — no oversized string attacks
+- Order type, side, amount validated with LLM-friendly error messages
+
+### Layer 4: Financial safety (Risk Engine)
+
+- **Mandatory and cannot be disabled** — this is architectural, not configurable
+- Symbol whitelist, position limits, daily loss kill switch
+- Hallucination loop detector — rate limiter returns `429` with explanation
+- Mark-to-market floating PnL tracked in real-time
+- See [Risk Engine](#risk-engine) for details
+
+### Layer 5: Audit integrity
+
+- **HMAC-SHA256 signature** on every audit entry (key derived from auth token)
+- SQLite WAL + JSONL dual-write with `fsync` — crash-safe
+- Agent cannot modify its own audit trail
+- Full risk snapshot captured with each trade
+
+### Layer 6: Error sanitization
+
+- Internal error details **never leaked** to clients
+- Client receives safe message + error code + actionable suggestion
+- Full error logged server-side only
+- Exchange API keys never leave Gateway process; LLM API keys never sent to Gateway
+
+### Brain-level security
+
+- **SSRF protection** — `fetch_url` blocks private/internal IPs (127.x, 10.x, 192.168.x, 169.254.x, metadata endpoints)
+- **Confidence gate** — trades blocked in code if `log_decision` confidence < 70%
+- **API key hygiene** — Google API key in header, not URL
+
+### Comparison with typical AI frameworks
+
+| Threat | Typical AI Frameworks | GreedyClaw |
+|--------|----------------------|------------|
+| **Remote Code Execution** | Admin UI exposed to network. 15K+ vulnerable instances found | No admin UI. REST API only, `127.0.0.1`. Zero network attack surface |
+| **Supply Chain Attack** | Plugin marketplaces with unverified extensions | No marketplace. Skills are local `.md` files you control |
+| **Prompt Injection → Account Drain** | LLM has shell access + exchange keys | Brain has no shell, no keys, no direct exchange access. Trades pass through risk engine |
+| **Hallucination Loop** | No rate limits. AI retries failed trades infinitely | Rate limiter detects loops → `429 RATE_LIMIT` → circuit breaker |
+| **Credential Leak** | Cloud DBs, localStorage, URL query strings | Local `.env` only. Constant-time auth. Token never in URLs |
+| **Audit Tampering** | No audit trail, or mutable logs | HMAC-SHA256 signed entries. SQLite + JSONL dual-write with fsync |
+
+---
+
+## Risk Engine
+
+The risk engine runs inside the Rust Gateway. It is **mandatory and cannot be disabled**. Every trade passes through it — no exceptions, no bypass.
+
+| Protection | Default | Description |
+|------------|---------|-------------|
+| **Symbol whitelist** | Configurable | Only trade explicitly allowed pairs |
+| **Max position size** | $500 | Cap single-trade USD exposure |
+| **Max daily loss** | $100 | Kill switch — stops ALL trading when hit |
+| **Max open positions** | 3 | Prevent over-diversification |
+| **Rate limiter** | 10/min | Circuit breaker for hallucination loops |
+| **Input validation** | Always on | Reject NaN, Infinity, negatives, $1B+ amounts |
+| **Floating PnL** | Real-time | Mark-to-market tracking for accurate daily P&L |
+
+### How the kill switch works
+
+```
+Pre-trade check:
+  1. Rate limit     → 429 "Possible hallucination loop"
+  2. Symbol check   → 403 "Not in allowed list"
+  3. Input sanity   → 400 "Must be finite positive number"
+  4. Position size   → 403 "Exceeds max $500"
+  5. Open positions → 403 "3 open, max is 3"
+  6. Daily loss     → 403 "Daily PnL -$102 exceeds -$100"
+
+ALL checks pass → execute trade → record fill → update PnL
 ```
 
-**macOS / Linux:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/GreedyClaw/GreedyClaw/main/install.sh | bash
-```
-
-### Docker (recommended)
-
-```bash
-git clone https://github.com/GreedyClaw/GreedyClaw.git
-cd GreedyClaw
-
-# Set your keys
-cp .env.example .env
-nano .env  # Add API keys
-
-# Start everything
-docker-compose up
-```
-
-### Manual install
-
-```bash
-git clone https://github.com/GreedyClaw/GreedyClaw.git
-cd GreedyClaw
-cargo build --release
-./target/release/greedyclaw init
-
-# Edit your API keys
-nano ~/.greedyclaw/.env
-nano ~/.greedyclaw/config.toml
-
-# Start the gateway
-greedyclaw serve
-```
-
-### First Trade
-
-```bash
-curl -X POST http://127.0.0.1:7878/trade \
-  -H "Authorization: Bearer your_token" \
-  -H "Content-Type: application/json" \
-  -d '{"action": "buy", "symbol": "BTCUSDT", "amount": 0.001}'
-```
-
-## AI Brain
-
-The Brain is an autonomous Python agent that researches markets and trades through the Gateway.
-
-### How it works
-
-```
-Every 15 minutes:
-  1. OBSERVE  — Check positions, balance, risk status
-  2. RESEARCH — Scrape Forex Factory, news sites, search the web
-  3. ANALYZE  — Feed everything to LLM for analysis
-  4. DECIDE   — LLM outputs: action + confidence + reasoning
-  5. LOG      — Record decision to decisions.jsonl
-  6. ACT      — If confidence >= 70%, execute trade via Gateway
-```
-
-### Setup
-
-```bash
-cd brain
-pip install -r requirements.txt
-
-# Interactive onboarding wizard
-python -m brain --setup
-```
-
-The wizard guides you through:
-1. LLM provider selection (set at least one API key)
-2. Gateway connection
-3. Market selection (forex/crypto/solana)
-4. Symbol configuration
-
-### Run
-
-```bash
-# Single analysis cycle
-python -m brain
-
-# Autonomous loop (every 15 minutes)
-python -m brain --loop
-
-# Check status
-python -m brain --status
-```
-
-### 6 LLM Providers with Automatic Failover
-
-| Provider | Env Variable | Models |
-|----------|-------------|--------|
-| **Anthropic** | `ANTHROPIC_API_KEY` | Claude Sonnet, Opus |
-| **OpenAI** | `OPENAI_API_KEY` | GPT-4o, GPT-4 |
-| **Google** | `GOOGLE_API_KEY` | Gemini 2.5 Flash/Pro |
-| **DeepSeek** | `DEEPSEEK_API_KEY` | DeepSeek Chat |
-| **OpenRouter** | `OPENROUTER_API_KEY` | 200+ models |
-| **Ollama** | `OLLAMA_URL` | Llama, Mistral, any local model |
-
-Set multiple keys for automatic failover. If Claude is down, Brain switches to GPT, then Gemini, etc.
-
-### Skills (Trading Strategies as Markdown)
-
-Skills are SKILL.md files that teach the LLM *how* to trade. The agent reads them on-demand:
-
-| Skill | File | Strategy |
-|-------|------|----------|
-| **forex-fundamentals** | `brain/skills/forex-fundamentals/SKILL.md` | Trade around economic calendar events (NFP, CPI, FOMC) |
-| **xauusd-sentiment** | `brain/skills/xauusd-sentiment/SKILL.md` | Gold sentiment scoring: Fed + DXY + geopolitics |
-| **crypto-momentum** | `brain/skills/crypto-momentum/SKILL.md` | BTC/ETH momentum: ETF flows + Fear/Greed + on-chain |
-
-Create your own: add a folder in `brain/skills/your-strategy/SKILL.md` — the agent picks it up automatically.
-
-### Agent Tools
-
-The LLM can call these tools during reasoning:
-
-| Tool | Description |
-|------|-------------|
-| `trade` | Execute buy/sell via Gateway |
-| `get_price` | Current bid/ask price |
-| `get_positions` | Open positions + PnL |
-| `get_balance` | Account equity + margin |
-| `get_risk_status` | Risk engine state |
-| `web_search` | Search the web (DuckDuckGo) |
-| `fetch_url` | Extract text from any URL |
-| `log_decision` | Record reasoning + confidence |
+---
 
 ## MCP Server
 
-GreedyClaw includes a [Model Context Protocol](https://modelcontextprotocol.io/) server — connect Claude Desktop, Cursor, or VS Code directly.
+Connect Claude Desktop, Cursor, or VS Code directly to GreedyClaw via [Model Context Protocol](https://modelcontextprotocol.io/).
 
 ### Setup (Claude Desktop)
 
@@ -257,142 +378,130 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-### MCP Tools (12 total)
+### 12 MCP tools
 
-| Tool | Description |
-|------|-------------|
-| `trade` | Execute buy/sell trade |
-| `status` | Gateway health + risk state |
-| `balance` | Account balances |
-| `positions` | Open positions + PnL |
-| `price` | Current price for symbol |
-| `trades` | Recent trade history |
-| `stats` | Aggregated trade statistics |
-| `pnl` | PnL time series |
-| `cancel` | Cancel open order |
-| `scanner_start` | Start PumpFun token scanner |
-| `scanner_stop` | Stop scanner |
-| `scanner_status` | Scanner metrics + top tokens |
+| Tool | | Tool | |
+|------|-|------|-|
+| `trade` | Execute buy/sell | `status` | Gateway health + risk |
+| `balance` | Account balances | `positions` | Open positions + PnL |
+| `price` | Current price | `trades` | Recent history |
+| `stats` | Trade statistics | `pnl` | PnL time series |
+| `cancel` | Cancel order | `scanner_start` | Start token scanner |
+| `scanner_stop` | Stop scanner | `scanner_status` | Scanner metrics |
 
-## Using MT5 (Forex, Gold, Indices)
-
-```bash
-# 1. Start the MT5 bridge (requires MT5 terminal + Python)
-cd mt5-bridge
-pip install -r requirements.txt
-python mt5_bridge.py
-
-# 2. Set exchange = "mt5" in config.toml, then:
-greedyclaw serve
-
-# 3. Trade gold!
-greedyclaw trade buy XAUUSD 0.01
-```
-
-## Using CCXT (Bybit, OKX, Kraken, etc.)
-
-```bash
-# 1. Start the CCXT bridge
-cd mt5-bridge
-pip install ccxt fastapi uvicorn
-CCXT_API_KEY=... CCXT_SECRET=... python ccxt_bridge.py --exchange bybit
-
-# 2. Set exchange = "bybit" in config.toml, then:
-greedyclaw serve
-```
-
-## API Reference
-
-All endpoints require `Authorization: Bearer <token>` header (except `/dashboard`).
-
-### Trading
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/trade` | Execute a trade (buy/sell, market/limit) |
-| `DELETE` | `/order/{id}` | Cancel an open order |
-
-### Account
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/status` | Health check + risk state |
-| `GET` | `/balance` | Account balances |
-| `GET` | `/positions` | Open positions + unrealized PnL |
-| `GET` | `/price/{symbol}` | Current price |
-| `GET` | `/trades` | Recent trades from audit log |
-| `GET` | `/trades/stats` | Trade statistics |
-| `GET` | `/trades/pnl` | PnL time series |
-
-### Scanner (PumpFun Token Discovery)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/scanner/start` | Start gRPC token scanner |
-| `POST` | `/scanner/stop` | Stop scanner |
-| `GET` | `/scanner/status` | Scanner metrics + top tokens |
-| `GET` | `/scanner/tokens` | All tracked tokens |
-| `GET/PUT` | `/scanner/config` | Get/update scanner config |
-| `GET` | `/scanner/positions` | Scanner-managed positions |
-
-### Dashboard
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/dashboard` | Visual trading dashboard (no auth) |
-
-## Risk Engine
-
-The risk engine is **mandatory and cannot be disabled**. This is by design — an AI agent with unrestricted exchange access is a liability.
-
-| Protection | Default | Purpose |
-|------------|---------|---------|
-| **Symbol whitelist** | configurable | Prevent trading unknown pairs |
-| **Max position size** | $500 | Cap single trade exposure |
-| **Max daily loss** | $100 | Kill switch — stops all trading |
-| **Max open positions** | 3 | Prevent over-diversification |
-| **Rate limiter** | 10/min | Circuit breaker for hallucination loops |
-
-### Why a Circuit Breaker?
-
-LLMs sometimes enter infinite loops when they receive unexpected errors. GreedyClaw's rate limiter detects this pattern and returns `429 RATE_LIMIT` with *"Possible hallucination loop"* — giving the agent (and you) time to recover.
+---
 
 ## Scanner
 
-GreedyClaw includes a built-in **PumpFun token scanner** that streams Solana transactions via Yellowstone gRPC, scores tokens using the LAZARUS strategy (Optuna-optimized), and can autonomously trade:
+Built-in **PumpFun token scanner** — streams Solana transactions via Yellowstone gRPC, scores tokens in real-time using the LAZARUS strategy (Optuna-optimized parameters).
 
 - Real-time bonding curve tracking
-- Anti-rug filters (whale detection, sell ratio, zombie tokens)
-- Configurable trigger parameters via API
+- Anti-rug filters: whale detection, sell ratio analysis, zombie token filtering
+- Configurable trigger parameters via REST API
 - Visual dashboard with live token metrics
+
+```bash
+# Start via API
+curl -X POST http://127.0.0.1:7878/scanner/start \
+  -H "Authorization: Bearer your_token"
+
+# Check discovered tokens
+curl http://127.0.0.1:7878/scanner/status \
+  -H "Authorization: Bearer your_token"
+```
+
+---
 
 ## Docker
 
-One command to run the full stack:
-
 ```bash
-# Copy and edit .env
-cp .env.example .env
-nano .env
+cp .env.example .env && nano .env
 
-# Start Gateway + Brain
-docker-compose up
-
-# With MT5 bridge
-docker-compose --profile mt5 up
-
-# With CCXT bridge (Bybit, OKX, etc.)
-CCXT_EXCHANGE=bybit docker-compose --profile ccxt up
+docker-compose up                                     # Gateway + Brain
+docker-compose --profile mt5 up                       # + MT5 bridge
+CCXT_EXCHANGE=bybit docker-compose --profile ccxt up  # + CCXT bridge
 ```
 
-### Services
+| Service | Port | Description |
+|---------|------|-------------|
+| `gateway` | 7878 | Rust execution gateway |
+| `brain` | — | Autonomous AI agent |
+| `mt5-bridge` | 7879 | MT5 connector (optional) |
+| `ccxt-bridge` | 7880 | CCXT connector (optional) |
 
-| Service | Image | Port | Description |
-|---------|-------|------|-------------|
-| `gateway` | Rust | 7878 | Execution gateway |
-| `brain` | Python | — | Autonomous AI agent |
-| `mt5-bridge` | Python | 7879 | MT5 connector (optional) |
-| `ccxt-bridge` | Python | 7880 | CCXT connector (optional) |
+---
+
+## API
+
+All endpoints require `Authorization: Bearer <token>` (except `/dashboard`).
+
+### Trading
+
+```
+POST   /trade         Execute buy/sell (market or limit)
+DELETE /order/{id}     Cancel open order
+```
+
+### Account & monitoring
+
+```
+GET /status            Health + risk engine snapshot
+GET /balance           Account balances
+GET /positions         Open positions + unrealized PnL
+GET /price/{symbol}    Current price
+GET /trades            Recent trades from audit log
+GET /trades/stats      Aggregated trade statistics
+GET /trades/pnl        PnL time series (equity curve)
+GET /dashboard         Visual trading dashboard (no auth)
+```
+
+### Scanner
+
+```
+POST /scanner/start       Start gRPC token scanner
+POST /scanner/stop        Stop scanner
+GET  /scanner/status      Scanner metrics + top tokens
+GET  /scanner/tokens      All tracked tokens
+GET  /scanner/config      Get scanner config
+PUT  /scanner/config      Update scanner config
+GET  /scanner/positions   Scanner-managed positions
+```
+
+### Example: Python agent
+
+```python
+import requests
+
+GW = "http://127.0.0.1:7878"
+H = {"Authorization": "Bearer your_token"}
+
+# Buy gold on MT5
+requests.post(f"{GW}/trade", headers=H, json={"action": "buy", "symbol": "XAUUSD", "amount": 0.01})
+
+# Check risk status
+requests.get(f"{GW}/status", headers=H).json()
+# → {"risk": {"daily_pnl": -12.50, "remaining_daily_limit": 87.50, "open_positions": 1, ...}}
+```
+
+### Example: Claude / GPT function calling
+
+```json
+{
+  "name": "execute_trade",
+  "description": "Execute a trade via GreedyClaw gateway with mandatory risk checks.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {"type": "string", "enum": ["buy", "sell"]},
+      "symbol": {"type": "string"},
+      "amount": {"type": "number"}
+    },
+    "required": ["action", "symbol", "amount"]
+  }
+}
+```
+
+---
 
 ## Configuration
 
@@ -404,9 +513,7 @@ host = "127.0.0.1"
 port = 7878
 
 [exchange]
-# Native: "binance", "pumpfun", "pumpswap", "mt5"
-# CCXT: "bybit", "okx", "kraken", "coinbase", "kucoin", ...
-name = "binance"
+name = "binance"       # or "mt5", "bybit", "okx", "pumpfun", etc.
 testnet = true
 
 [risk]
@@ -423,244 +530,79 @@ max_trades_per_minute = 10
 model: claude-sonnet-4-20250514
 loop_interval_minutes: 15
 market: forex
-symbols:
-  - XAUUSD
-sources:
-  - forex_factory
-  - investing_com
+symbols: [XAUUSD]
+sources: [forex_factory, investing_com]
 ```
 
 ### `~/.greedyclaw/.env`
 
 ```env
-GREEDYCLAW_AUTH_TOKEN=your_auth_token
+GREEDYCLAW_AUTH_TOKEN=<auto-generated 64-char hex>
 
-# Exchange keys
-BINANCE_API_KEY=your_key
-BINANCE_SECRET_KEY=your_secret
+# Exchange (set one)
+BINANCE_API_KEY=...
+BINANCE_SECRET_KEY=...
 
-# LLM providers (set at least one)
+# LLM (set at least one for Brain)
 ANTHROPIC_API_KEY=sk-ant-...
 OPENAI_API_KEY=sk-...
 GOOGLE_API_KEY=AI...
-# DEEPSEEK_API_KEY=sk-...
-# OPENROUTER_API_KEY=sk-or-...
-# OLLAMA_URL=http://localhost:11434
 ```
 
-## Architecture
+---
 
+## Using MT5 (Forex, Gold, Indices)
+
+```bash
+cd mt5-bridge && pip install -r requirements.txt
+python mt5_bridge.py                # Starts on :7879
+# Set exchange = "mt5" in config.toml
+greedyclaw serve
+greedyclaw trade buy XAUUSD 0.01    # Buy 0.01 lot gold
 ```
-GreedyClaw/
-├── src/                         # Rust gateway
-│   ├── main.rs                  # CLI: init, serve, trade
-│   ├── config.rs                # TOML + .env config loading
-│   ├── server.rs                # Axum router, auth middleware
-│   ├── dashboard.rs             # Embedded HTML/JS dashboard
-│   ├── error.rs                 # LLM-friendly error responses
-│   ├── risk.rs                  # Risk engine (mandatory)
-│   ├── audit.rs                 # SQLite + JSONL dual-write
-│   ├── exchange/
-│   │   ├── mod.rs               # Exchange trait (5 methods)
-│   │   ├── types.rs             # OrderRequest, OrderResult, Balance
-│   │   ├── binance.rs           # Binance REST + HMAC-SHA256
-│   │   ├── pumpfun.rs           # PumpFun bonding curve (Solana)
-│   │   ├── pumpswap.rs          # PumpSwap AMM (Solana)
-│   │   ├── mt5.rs               # MetaTrader 5 (via bridge)
-│   │   └── ccxt.rs              # CCXT 100+ exchanges (via bridge)
-│   ├── scanner/                 # PumpFun token scanner
-│   ├── api/                     # REST API handlers
-│   └── solana/                  # Solana wallet, RPC, TX building
-│
-├── brain/                       # Python autonomous agent
-│   ├── main.py                  # Entry point + onboarding wizard
-│   ├── agent.py                 # Core loop: observe → think → act
-│   ├── llm.py                   # Multi-provider LLM (6 providers)
-│   ├── tools.py                 # 8 tools for LLM reasoning
-│   ├── scraper.py               # Web scraping (Forex Factory, news)
-│   ├── memory.py                # JSONL session + decision persistence
-│   ├── config.py                # brain.yaml + env config
-│   └── skills/                  # Trading strategies (SKILL.md)
-│       ├── forex-fundamentals/  # Economic calendar trading
-│       ├── xauusd-sentiment/    # Gold sentiment analysis
-│       └── crypto-momentum/     # Crypto momentum trading
-│
-├── mt5-bridge/                  # Python bridges
-│   ├── mt5_bridge.py            # MT5 FastAPI bridge
-│   ├── ccxt_bridge.py           # CCXT FastAPI bridge
-│   └── requirements.txt
-│
-├── integrations/
-│   └── mcp-server/              # MCP server (12 tools)
-│
-├── Dockerfile                   # Rust gateway image
-├── docker-compose.yml           # Full stack: gateway + brain + bridges
-├── install.sh                   # macOS/Linux installer
-└── install.ps1                  # Windows installer
+
+## Using CCXT (Bybit, OKX, Kraken, 100+ more)
+
+```bash
+cd mt5-bridge && pip install ccxt fastapi uvicorn
+CCXT_API_KEY=... CCXT_SECRET=... python ccxt_bridge.py --exchange bybit
+# Set exchange = "bybit" in config.toml
+greedyclaw serve
 ```
+
+---
 
 ## Roadmap
 
-- [x] **Phase 1: MVP** — Binance Testnet, REST API, risk engine, audit log
-- [x] **Phase 2: Solana** — PumpFun + PumpSwap, Ed25519 signing, Jupiter
-- [x] **Phase 3: Dashboard** — Visual trading dashboard, PnL charts
-- [x] **Phase 4: Scanner** — PumpFun token discovery, LAZARUS strategy, gRPC streaming
-- [x] **Phase 5: Multi-exchange** — MT5 (Forex/Gold) + CCXT (100+ exchanges)
-- [x] **Phase 8: MCP Server** — Model Context Protocol (12 tools for Claude/Cursor/VS Code)
-- [x] **Phase 9: AI Brain** — Autonomous agent, 6 LLM providers, skills, web scraping
-- [x] **Docker** — One-command deployment (docker-compose up)
-- [ ] **Phase 6: Auto-trade** — Scanner triggers wired to Brain execution
-- [ ] **Phase 7: WebSocket** — Real-time feeds and fill notifications
-- [ ] **Phase 10: Strategy SDK** — Pluggable strategy modules with backtesting
-- [ ] **Phase 11: Telegram Bot** — Mobile notifications and control
-
-## Use with AI Agents
-
-### Python
-
-```python
-import requests
-
-GW = "http://127.0.0.1:7878"
-H = {"Authorization": "Bearer your_token", "Content-Type": "application/json"}
-
-# Buy gold on MT5
-requests.post(f"{GW}/trade", headers=H, json={"action": "buy", "symbol": "XAUUSD", "amount": 0.01})
-
-# Buy BTC on Binance
-requests.post(f"{GW}/trade", headers=H, json={"action": "buy", "symbol": "BTCUSDT", "amount": 0.001})
-
-# Check positions
-requests.get(f"{GW}/positions", headers=H).json()
-```
-
-### Claude / GPT (Function Calling)
-
-```json
-{
-  "name": "execute_trade",
-  "description": "Execute a trade via GreedyClaw. Supports 100+ exchanges.",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "action": {"type": "string", "enum": ["buy", "sell"]},
-      "symbol": {"type": "string", "description": "Trading pair (BTCUSDT, XAUUSD, EURUSD, etc.)"},
-      "amount": {"type": "number", "description": "Quantity"}
-    },
-    "required": ["action", "symbol", "amount"]
-  }
-}
-```
-
-## Security — Why GreedyClaw Is Built Different
-
-Most AI agent frameworks treat security as an afterthought. We studied every major incident in the space — **and designed GreedyClaw so they can't happen here.**
-
-### Security Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                  SECURITY LAYERS                         │
-│                                                          │
-│  ┌─── Network ──────────────────────────────────────┐   │
-│  │  bind 127.0.0.1 ONLY (no remote by default)      │   │
-│  │  No admin panel exposed to internet               │   │
-│  │  No mDNS broadcast                                │   │
-│  └───────────────────────────────────────────────────┘   │
-│  ┌─── Authentication ───────────────────────────────┐   │
-│  │  Bearer token on EVERY request (no exceptions)    │   │
-│  │  Token stored in ~/.greedyclaw/.env (not in URL)  │   │
-│  │  No default credentials shipped                   │   │
-│  └───────────────────────────────────────────────────┘   │
-│  ┌─── Financial Safety ─────────────────────────────┐   │
-│  │  Risk Engine: MANDATORY, cannot be disabled       │   │
-│  │  ├─ Max position size per trade                   │   │
-│  │  ├─ Daily loss kill switch                        │   │
-│  │  ├─ Symbol whitelist                              │   │
-│  │  ├─ Max open positions                            │   │
-│  │  └─ Hallucination loop detector (rate limiter)    │   │
-│  └───────────────────────────────────────────────────┘   │
-│  ┌─── Audit & Recovery ─────────────────────────────┐   │
-│  │  SQLite WAL + JSONL dual-write (fsync)            │   │
-│  │  Every trade logged with risk snapshot             │   │
-│  │  Agent cannot modify its own audit trail           │   │
-│  └───────────────────────────────────────────────────┘   │
-│  ┌─── Isolation ────────────────────────────────────┐   │
-│  │  Brain crash ≠ Gateway crash (separate processes) │   │
-│  │  Risk engine runs in Gateway (Rust), not Brain    │   │
-│  │  Brain has NO direct exchange access               │   │
-│  │  All trades go through risk checks — no bypass     │   │
-│  └───────────────────────────────────────────────────┘   │
-│  ┌─── Supply Chain ─────────────────────────────────┐   │
-│  │  No plugin marketplace — skills are local files   │   │
-│  │  No remote code execution from third parties      │   │
-│  │  Zero telemetry, zero data collection              │   │
-│  └───────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────┘
-```
-
-### GreedyClaw vs Typical AI Agent Frameworks
-
-Most AI agent frameworks give the LLM **shell access, filesystem access, browser automation**, and run with full user privileges. One prompt injection = full system compromise. Here's how GreedyClaw is different:
-
-| Threat | Typical AI Frameworks | GreedyClaw |
-|--------|----------------------|------------|
-| **Remote Code Execution** | Admin UI exposed to network. Thousands of vulnerable instances found on public internet | **No admin UI.** REST API only, bound to `127.0.0.1`. Zero attack surface from network |
-| **Supply Chain Attack** | Plugin marketplaces with unverified extensions — backdoors, credential theft | **No marketplace.** Skills are local SKILL.md files in your repo. You control every line |
-| **Credential Leak** | Cloud databases with API tokens, misconfigured storage | **No cloud database.** Keys in local `~/.greedyclaw/.env`. Tokens never leave your machine |
-| **Token Exposure** | Auth tokens leaked via URL query strings, localStorage, WebSocket hijacking | **Token in Authorization header only.** Never in URLs, never in browser storage |
-| **Sandbox Escape** | Container reuse bugs, privilege escalation from sandbox to host | **No sandbox needed.** Brain communicates via HTTP only — cannot access host filesystem or shell |
-| **Network Exposure** | Instances accessible from public internet, mDNS broadcasts presence on LAN | **Loopback only** by default. No mDNS. No discovery. Invisible on the network |
-| **Financial Safety** | No financial risk limits. AI agent can drain entire exchange account in a loop | **Mandatory risk engine.** Daily loss cap, position limits, hallucination detector. Cannot be disabled |
-
-### The Core Difference
-
-> **Other frameworks** give AI agents system-level access and hope nothing goes wrong.
-> **GreedyClaw** is a financial execution system *designed from day one* to protect your money.
-
-The Brain (AI) communicates with the Gateway (execution) through a single REST API. The Brain cannot:
-- Access the filesystem
-- Execute shell commands
-- Bypass risk limits
-- Modify the audit log
-- Talk to exchanges directly
-
-Even if the LLM is completely compromised by prompt injection, the **worst case** is a trade that passes risk checks — not a system takeover.
-
-### Security Checklist
-
-- [x] Loopback binding (`127.0.0.1`) — not exposed to network
-- [x] Bearer token authentication on every endpoint
-- [x] No default credentials — `greedyclaw init` generates random token
-- [x] Mandatory risk engine — cannot be disabled or bypassed
-- [x] Daily loss kill switch — stops all trading automatically
-- [x] Hallucination loop detector — rate limiter returns 429
-- [x] SQLite + JSONL dual audit trail with fsync
-- [x] Brain/Gateway isolation — crash isolation, privilege separation
-- [x] No plugin marketplace — no supply chain attack vector
-- [x] No telemetry — zero data sent anywhere
-- [x] No admin UI — no XSS/CSRF/WebSocket hijacking surface
-- [x] No shell access for AI agent — REST API only
-- [x] Exchange keys never leave Gateway process
-- [x] LLM API keys never sent to Gateway
+- [x] **Phase 1** — Binance Testnet, REST API, risk engine, audit log
+- [x] **Phase 2** — PumpFun + PumpSwap (Solana, Ed25519 signing, Jupiter)
+- [x] **Phase 3** — Visual trading dashboard, PnL charts
+- [x] **Phase 4** — PumpFun token scanner (LAZARUS strategy, Yellowstone gRPC)
+- [x] **Phase 5** — MT5 + CCXT (100+ exchanges, forex, gold, stocks)
+- [x] **Phase 8** — MCP Server (12 tools for Claude/Cursor/VS Code)
+- [x] **Phase 9** — AI Brain (autonomous agent, 6 LLM providers, skills)
+- [x] **Phase 10** — Security hardening (constant-time auth, HMAC audit, SSRF protection)
+- [x] **Docker** — One-command deployment
+- [ ] **Phase 6** — Auto-trade (scanner triggers wired to Brain)
+- [ ] **Phase 7** — WebSocket (real-time feeds + fill notifications)
+- [ ] **Phase 11** — Strategy SDK (pluggable modules with backtesting)
+- [ ] **Phase 12** — Telegram Bot (mobile notifications + control)
 
 ## Contributing
 
 ```bash
 git clone https://github.com/GreedyClaw/GreedyClaw.git
-cd GreedyClaw
-cargo build
-cargo test
+cd GreedyClaw && cargo build && cargo test
 ```
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE) for details.
+Apache License 2.0 — see [LICENSE](LICENSE).
 
 ---
 
 <p align="center">
-  <img src="src/clawicon.png" width="80"/>
+  <img src="src/clawicon.png" width="60"/>
   <br/>
   <strong>Built with Rust. Powered by AI. Secured by design.</strong>
 </p>

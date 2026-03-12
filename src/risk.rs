@@ -16,6 +16,7 @@ struct TrackedPosition {
     quantity: f64,
     avg_entry_price: f64,
     mark_price: f64, // last known price for floating PnL
+    #[allow(dead_code)]
     side: OrderSide,
 }
 
@@ -260,6 +261,7 @@ impl RiskEngine {
 
     /// Update mark-to-market price for a symbol.
     /// Called during pre-trade check and can be called periodically for live PnL.
+    #[allow(dead_code)]
     pub fn update_mark_price(&self, symbol: &str, current_price: f64) -> f64 {
         if let Some(mut pos) = self.positions.get_mut(symbol) {
             pos.mark_price = current_price;

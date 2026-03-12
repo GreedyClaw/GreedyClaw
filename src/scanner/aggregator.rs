@@ -39,6 +39,7 @@ pub struct TokenStats {
     pub virtual_token_reserves: u64,
 
     // Price
+    #[allow(dead_code)]
     pub initial_price: f64,
     pub current_price: f64,
 

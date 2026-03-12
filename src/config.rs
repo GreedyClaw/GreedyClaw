@@ -16,11 +16,13 @@ pub struct Config {
     #[serde(default)]
     pub solana: SolanaConfig,
     #[serde(default)]
+    #[allow(dead_code)]
     pub scanner: ScannerGrpcConfig,
 }
 
 /// Scanner gRPC connection config.
 #[derive(Debug, Clone, Default, Deserialize)]
+#[allow(dead_code)]
 pub struct ScannerGrpcConfig {
     #[serde(default)]
     pub grpc_endpoint: String,
@@ -64,6 +66,7 @@ pub struct LoggingConfig {
     #[serde(default = "default_log_level")]
     pub level: String,
     #[serde(default = "default_log_format")]
+    #[allow(dead_code)]
     pub format: String,
 }
 
@@ -169,6 +172,7 @@ pub struct Secrets {
     pub binance_api_key: Option<String>,
     pub binance_secret_key: Option<String>,
     pub solana_keypair_path: Option<String>,
+    #[allow(dead_code)]
     pub shyft_grpc_x_token: Option<String>,
     pub auth_token: String,
 }
