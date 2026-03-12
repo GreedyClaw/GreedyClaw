@@ -1,6 +1,6 @@
-/// Scanner module — PumpFun token discovery and autonomous trading.
-/// Streams PumpFun transactions via gRPC, aggregates token stats,
-/// scores tokens, and optionally auto-trades via GreedyClaw's exchange layer.
+//! Scanner module — PumpFun token discovery and autonomous trading.
+//! Streams PumpFun transactions via gRPC, aggregates token stats,
+//! scores tokens, and optionally auto-trades via GreedyClaw's exchange layer.
 
 pub mod aggregator;
 pub mod parser;

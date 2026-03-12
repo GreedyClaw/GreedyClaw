@@ -1,11 +1,11 @@
-/// PumpSwap Exchange — AMM trading for graduated tokens.
-/// Adapted from RAMI/GRAD/rust_monitor/src/pumpswap_buyer.rs + pumpswap_seller.rs.
-///
-/// Symbol = mint address (base58).
-/// Buy amount = SOL to spend. Sell amount = token quantity (raw u64 as f64).
-///
-/// PumpSwap requires pool address, token_vault, sol_vault — these are discovered
-/// via RPC lookup (pool PDA = ["pool", 0u16, creator, mint, WSOL] or ["pool-v2", mint]).
+//! PumpSwap Exchange — AMM trading for graduated tokens.
+//! Adapted from RAMI/GRAD/rust_monitor/src/pumpswap_buyer.rs + pumpswap_seller.rs.
+//!
+//! Symbol = mint address (base58).
+//! Buy amount = SOL to spend. Sell amount = token quantity (raw u64 as f64).
+//!
+//! PumpSwap requires pool address, token_vault, sol_vault — these are discovered
+//! via RPC lookup (pool PDA = ["pool", 0u16, creator, mint, WSOL] or ["pool-v2", mint]).
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -93,9 +93,8 @@ impl PumpSwapExchange {
             if start.elapsed().as_millis() as u64 > TX_CONFIRM_TIMEOUT_MS {
                 return (false, false);
             }
-            match rpc::get_transaction_status(&self.client, &self.rpc_url, tx_hash).await {
-                Ok((true, has_err)) => return (true, has_err),
-                _ => {}
+            if let Ok((true, has_err)) = rpc::get_transaction_status(&self.client, &self.rpc_url, tx_hash).await {
+                return (true, has_err);
             }
             tokio::time::sleep(std::time::Duration::from_millis(TX_CONFIRM_POLL_MS)).await;
         }
@@ -121,7 +120,7 @@ impl PumpSwapExchange {
             })?;
 
         let pool_account = accounts
-            .get(0)
+            .first()
             .and_then(|a| a.as_ref())
             .ok_or_else(|| AppError::ExchangeApi {
                 code: -2,

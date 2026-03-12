@@ -1,5 +1,5 @@
-/// PumpFun transaction parser — extracts CREATE, BUY, SELL, COMPLETE events from gRPC transactions.
-/// Ported from RAMI/MOON/src/parser.rs.
+//! PumpFun transaction parser — extracts CREATE, BUY, SELL, COMPLETE events from gRPC transactions.
+//! Ported from RAMI/MOON/src/parser.rs.
 
 /// PumpFun Program ID
 pub const PUMPFUN_PROGRAM: &str = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";

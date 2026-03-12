@@ -20,21 +20,12 @@ pub struct Config {
 }
 
 /// Scanner gRPC connection config.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct ScannerGrpcConfig {
     #[serde(default)]
     pub grpc_endpoint: String,
     #[serde(default)]
     pub grpc_x_token: String,
-}
-
-impl Default for ScannerGrpcConfig {
-    fn default() -> Self {
-        Self {
-            grpc_endpoint: String::new(),
-            grpc_x_token: String::new(),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -261,7 +252,8 @@ host = "127.0.0.1"
 port = 7878
 
 [exchange]
-# Options: "binance", "pumpfun", "pumpswap"
+# Native: "binance", "pumpfun", "pumpswap", "mt5"
+# CCXT (100+ exchanges): "bybit", "okx", "kraken", "coinbase", "kucoin", "bitget", ...
 name = "binance"
 testnet = true
 
@@ -296,6 +288,18 @@ BINANCE_SECRET_KEY=your_testnet_secret_key_here
 
 # === Solana (for exchange = "pumpfun" or "pumpswap") ===
 # SOLANA_KEYPAIR_PATH=~/.config/solana/id.json
+
+# === MetaTrader 5 (for exchange = "mt5") ===
+# MT5_BRIDGE_URL=http://127.0.0.1:7879
+# Start the bridge first: cd mt5-bridge && python mt5_bridge.py
+
+# === CCXT (for exchange = "bybit", "okx", "kraken", etc.) ===
+# CCXT_BRIDGE_URL=http://127.0.0.1:7880
+# CCXT_API_KEY=your_api_key
+# CCXT_SECRET=your_secret
+# CCXT_PASSWORD=your_passphrase  (OKX, KuCoin)
+# CCXT_SANDBOX=true              (testnet mode)
+# Start bridge: cd mt5-bridge && python ccxt_bridge.py --exchange bybit
 
 # === Scanner (PumpFun token discovery) ===
 # SHYFT_GRPC_X_TOKEN=your_shyft_grpc_token

@@ -1,5 +1,5 @@
-/// Strategy engine — manages auto-trading when scanner triggers fire.
-/// Tracks positions opened by the scanner and handles exit logic.
+//! Strategy engine — manages auto-trading when scanner triggers fire.
+//! Tracks positions opened by the scanner and handles exit logic.
 
 use serde::Serialize;
 use std::sync::atomic::{AtomicU64, Ordering};

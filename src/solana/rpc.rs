@@ -1,5 +1,5 @@
-/// Solana RPC helpers: blockhash, send TX, account info, balance, confirmation.
-/// Adapted from RAMI/MOON/src/rpc.rs.
+//! Solana RPC helpers: blockhash, send TX, account info, balance, confirmation.
+//! Adapted from RAMI/MOON/src/rpc.rs.
 
 use anyhow::{Context, Result};
 use base64::Engine;

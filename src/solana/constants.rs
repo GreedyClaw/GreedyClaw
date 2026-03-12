@@ -1,5 +1,5 @@
-/// Solana program addresses and constants for PumpFun + PumpSwap.
-/// Consolidated from RAMI/MOON/src/rpc.rs + RAMI/GRAD/rust_monitor/src/pumpswap_buyer.rs.
+//! Solana program addresses and constants for PumpFun + PumpSwap.
+//! Consolidated from RAMI/MOON/src/rpc.rs + RAMI/GRAD/rust_monitor/src/pumpswap_buyer.rs.
 
 // ── PumpFun (bonding curve) ──
 

@@ -1,5 +1,5 @@
-/// Trade audit log: SQLite + JSONL with fsync.
-/// Pattern from RAMI/MOON/src/db.rs — dual-write for crash safety.
+//! Trade audit log: SQLite + JSONL with fsync.
+//! Pattern from RAMI/MOON/src/db.rs — dual-write for crash safety.
 
 use crate::exchange::types::*;
 use crate::risk::RiskSnapshot;

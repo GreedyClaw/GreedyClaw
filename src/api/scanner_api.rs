@@ -1,4 +1,4 @@
-/// Scanner API endpoints — start/stop/status/config/tokens.
+//! Scanner API endpoints — start/stop/status/config/tokens.
 
 use axum::extract::State;
 use axum::Json;

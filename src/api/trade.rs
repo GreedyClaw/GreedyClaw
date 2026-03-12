@@ -20,7 +20,7 @@ pub async fn handle_trade<E: Exchange>(
     // 1. Parse and validate request
     let (side, order_type) = req
         .parse()
-        .map_err(|e| AppError::Validation(e))?;
+        .map_err(AppError::Validation)?;
 
     let symbol = req.symbol.to_uppercase();
 

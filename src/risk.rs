@@ -99,16 +99,15 @@ impl RiskEngine {
     fn maybe_reset_daily(&self) {
         let today = Utc::now().ordinal();
         let stored = self.pnl_day.load(Ordering::Relaxed);
-        if today != stored {
-            if self
+        if today != stored
+            && self
                 .pnl_day
                 .compare_exchange(stored, today, Ordering::SeqCst, Ordering::Relaxed)
                 .is_ok()
-            {
-                self.daily_pnl_cents.store(0, Ordering::Relaxed);
-                self.daily_trades.store(0, Ordering::Relaxed);
-                info!("[RISK] Daily counters reset (new day)");
-            }
+        {
+            self.daily_pnl_cents.store(0, Ordering::Relaxed);
+            self.daily_trades.store(0, Ordering::Relaxed);
+            info!("[RISK] Daily counters reset (new day)");
         }
     }
 
@@ -150,14 +149,15 @@ impl RiskEngine {
         }
 
         // 5. Max open positions (only for new buys)
-        if side == OrderSide::Buy && !self.positions.contains_key(symbol) {
-            if self.positions.len() >= self.config.max_open_positions {
-                return Err(AppError::RiskViolation(format!(
-                    "{} open positions, max is {}",
-                    self.positions.len(),
-                    self.config.max_open_positions
-                )));
-            }
+        if side == OrderSide::Buy
+            && !self.positions.contains_key(symbol)
+            && self.positions.len() >= self.config.max_open_positions
+        {
+            return Err(AppError::RiskViolation(format!(
+                "{} open positions, max is {}",
+                self.positions.len(),
+                self.config.max_open_positions
+            )));
         }
 
         // 6. Daily loss limit (realized + floating)

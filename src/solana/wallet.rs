@@ -1,5 +1,5 @@
-/// Solana keypair loading and Ed25519 signing.
-/// Adapted from RAMI/MOON/src/wallet.rs — production-proven.
+//! Solana keypair loading and Ed25519 signing.
+//! Adapted from RAMI/MOON/src/wallet.rs — production-proven.
 
 use anyhow::{Context, Result};
 use ed25519_dalek::{Signer, SigningKey};

@@ -1,5 +1,5 @@
-/// Embedded web dashboard for GreedyClaw.
-/// Served at GET /dashboard — single HTML page with Chart.js from CDN.
+//! Embedded web dashboard for GreedyClaw.
+//! Served at GET /dashboard — single HTML page with Chart.js from CDN.
 
 use axum::response::Html;
 

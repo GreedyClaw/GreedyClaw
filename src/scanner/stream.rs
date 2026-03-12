@@ -1,5 +1,5 @@
-/// gRPC stream — connects to Yellowstone/Shyft and subscribes to PumpFun transactions.
-/// Ported from RAMI/MOON/src/main.rs.
+//! gRPC stream — connects to Yellowstone/Shyft and subscribes to PumpFun transactions.
+//! Ported from RAMI/MOON/src/main.rs.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -163,11 +163,9 @@ async fn connect_and_stream(
 
         match message {
             Ok(msg) => {
-                if let Some(update) = msg.update_oneof {
-                    if let UpdateOneof::Transaction(tx_update) = update {
-                        stats.txs_received.fetch_add(1, Ordering::Relaxed);
-                        process_tx(&tx_update, stats, config, strategy, trigger_tx).await;
-                    }
+                if let Some(UpdateOneof::Transaction(tx_update)) = msg.update_oneof {
+                    stats.txs_received.fetch_add(1, Ordering::Relaxed);
+                    process_tx(&tx_update, stats, config, strategy, trigger_tx).await;
                 }
             }
             Err(e) => {

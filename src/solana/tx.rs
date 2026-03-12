@@ -1,5 +1,5 @@
-/// Solana transaction building: PDA derivation, MessageV0, compact-u16.
-/// Merged from RAMI/MOON/src/rpc.rs + RAMI/GRAD/rust_monitor/src/tx.rs.
+//! Solana transaction building: PDA derivation, MessageV0, compact-u16.
+//! Merged from RAMI/MOON/src/rpc.rs + RAMI/GRAD/rust_monitor/src/tx.rs.
 
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};

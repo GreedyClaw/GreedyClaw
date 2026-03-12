@@ -25,6 +25,12 @@ pub enum AppError {
     #[error("Unauthorized")]
     Unauthorized,
 
+    #[error("Exchange error: {0}")]
+    Exchange(String),
+
+    #[error("Exchange unreachable: {0}")]
+    ExchangeUnreachable(String),
+
     #[error("Internal: {0}")]
     Internal(String),
 }
@@ -77,6 +83,16 @@ impl IntoResponse for AppError {
                 StatusCode::UNAUTHORIZED,
                 "UNAUTHORIZED",
                 Some("Include Authorization: Bearer <token> header.".into()),
+            ),
+            AppError::Exchange(_) => (
+                StatusCode::BAD_GATEWAY,
+                "EXCHANGE_ERROR",
+                Some("Exchange rejected the request. Check parameters.".into()),
+            ),
+            AppError::ExchangeUnreachable(_) => (
+                StatusCode::BAD_GATEWAY,
+                "EXCHANGE_UNREACHABLE",
+                Some("Exchange bridge is unreachable. Ensure mt5-bridge is running.".into()),
             ),
             AppError::Internal(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,

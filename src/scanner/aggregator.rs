@@ -1,5 +1,5 @@
-/// In-memory token volume aggregator with peak/dip tracking and bonding curve math.
-/// Ported from RAMI/MOON/src/aggregator.rs — adapted for GreedyClaw scanner.
+//! In-memory token volume aggregator with peak/dip tracking and bonding curve math.
+//! Ported from RAMI/MOON/src/aggregator.rs — adapted for GreedyClaw scanner.
 
 use dashmap::DashMap;
 use serde::Serialize;

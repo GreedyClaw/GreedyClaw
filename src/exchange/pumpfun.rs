@@ -1,8 +1,8 @@
-/// PumpFun Exchange — bonding curve token trading.
-/// Adapted from RAMI/MOON/src/buyer.rs + seller.rs.
-///
-/// Symbol = mint address (base58).
-/// Buy amount = SOL to spend. Sell amount = token quantity (raw u64 as f64).
+//! PumpFun Exchange — bonding curve token trading.
+//! Adapted from RAMI/MOON/src/buyer.rs + seller.rs.
+//!
+//! Symbol = mint address (base58).
+//! Buy amount = SOL to spend. Sell amount = token quantity (raw u64 as f64).
 
 use std::sync::Arc;
 use std::time::Instant;

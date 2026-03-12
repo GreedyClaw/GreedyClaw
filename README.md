@@ -6,7 +6,8 @@
 
 <p align="center">
   <strong>Your AI agent trades. GreedyClaw executes.</strong><br/>
-  Self-hosted Rust gateway that turns any LLM into a trader — safely.
+  Self-hosted Rust gateway that turns any LLM into a trader — safely.<br/>
+  One API for <strong>100+ exchanges</strong>: crypto, forex, gold, stocks, DeFi.
 </p>
 
 <p align="center">
@@ -18,9 +19,10 @@
 
 <p align="center">
   <a href="#quickstart">Quickstart</a> &bull;
-  <a href="#how-it-works">How It Works</a> &bull;
+  <a href="#supported-exchanges">Exchanges</a> &bull;
   <a href="#api-reference">API</a> &bull;
   <a href="#risk-engine">Risk Engine</a> &bull;
+  <a href="#scanner">Scanner</a> &bull;
   <a href="#configuration">Config</a> &bull;
   <a href="#roadmap">Roadmap</a>
 </p>
@@ -34,58 +36,76 @@ Every AI trading project reinvents the same wheel: exchange authentication, orde
 **GreedyClaw** is the missing layer between your AI agent and the exchange. A local REST API server that handles execution, enforces risk limits, and keeps an audit trail — so your agent can focus on *what* to trade, not *how*.
 
 ```
-┌─────────────────────┐       POST /trade        ┌──────────────────┐
-│                     │  ───────────────────────► │                  │
-│   Your AI Agent     │  { "action": "buy",       │   GreedyClaw     │
-│                     │    "symbol": "BTCUSDT",   │   (localhost)    │
-│  Claude / GPT /     │    "amount": 0.001 }      │                  │
-│  Local LLM /        │  ◄─────────────────────── │  ► Risk Check    │
-│  Python script      │  { "success": true,       │  ► Exchange API  │
-│                     │    "filled_qty": 0.001,   │  ► Audit Log     │
-│                     │    "avg_price": 95432 }   │  ► Position Track │
-└─────────────────────┘                           └──────────────────┘
+┌─────────────────────┐       POST /trade        ┌──────────────────┐       ┌─────────────┐
+│                     │  ───────────────────────► │                  │ ────► │  Binance    │
+│   Your AI Agent     │  { "action": "buy",       │   GreedyClaw     │ ────► │  Bybit      │
+│                     │    "symbol": "XAUUSD",    │   (localhost)    │ ────► │  MT5 (Forex)│
+│  Claude / GPT /     │    "amount": 0.01 }       │                  │ ────► │  OKX        │
+│  Local LLM /        │  ◄─────────────────────── │  ► Risk Check    │ ────► │  Kraken     │
+│  Python script      │  { "success": true,       │  ► Exchange API  │ ────► │  PumpFun    │
+│                     │    "avg_price": 2650 }     │  ► Audit Log     │ ────► │  100+ more  │
+└─────────────────────┘                           └──────────────────┘       └─────────────┘
 ```
 
-## Why GreedyClaw?
+## Supported Exchanges
 
-| Feature | CCXT | Freqtrade | Alpaca | **GreedyClaw** |
-|---------|------|-----------|--------|----------------|
-| Purpose-built for AI agents | No | No | Partial | **Yes** |
-| Self-hosted (keys never leave) | N/A | Yes | No | **Yes** |
-| Built-in risk limits | No | Basic | No | **Yes** |
-| Circuit breaker for LLM loops | No | No | No | **Yes** |
-| REST API for any language | No | No | Yes | **Yes** |
-| Rust performance | No | No | N/A | **Yes** |
-| Audit trail (SQLite + JSONL) | No | No | Yes | **Yes** |
+### Native (built-in, zero dependencies)
+
+| Exchange | Markets | Status |
+|----------|---------|--------|
+| **Binance** | BTC, ETH, 500+ crypto pairs | Ready |
+| **PumpFun** | Solana bonding curve memecoins | Ready |
+| **PumpSwap** | Solana AMM graduated tokens | Ready |
+
+### MetaTrader 5 (via Python bridge)
+
+| Exchange | Markets | Status |
+|----------|---------|--------|
+| **MT5** | Forex (EURUSD, GBPUSD...), Gold (XAUUSD), Indices, Stocks, Crypto CFD | Ready |
+
+### CCXT (via Python bridge — 100+ exchanges)
+
+| Exchange | Type | | Exchange | Type |
+|----------|------|-|----------|------|
+| **Bybit** | Spot + Futures | | **Gate.io** | Spot + Futures |
+| **OKX** | Spot + Futures | | **KuCoin** | Spot + Futures |
+| **Kraken** | Spot + Margin | | **Bitget** | Spot + Futures |
+| **Coinbase** | Spot | | **MEXC** | Spot + Futures |
+| **HTX** | Spot + Futures | | **+ 90 more** | [Full list](https://github.com/ccxt/ccxt/wiki/Exchange-Markets) |
+
+> **One API to rule them all.** Your AI agent calls `POST /trade` — GreedyClaw routes to any exchange.
 
 ## Quickstart
 
-### Install
+### One-line install
+
+**Windows (PowerShell):**
+```powershell
+irm https://raw.githubusercontent.com/GreedyClaw/GreedyClaw/main/install.ps1 | iex
+```
+
+**macOS / Linux:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/GreedyClaw/GreedyClaw/main/install.sh | bash
+```
+
+### Manual install
 
 ```bash
-# From source (requires Rust 1.75+)
 git clone https://github.com/GreedyClaw/GreedyClaw.git
 cd GreedyClaw
 cargo build --release
-
-# Binary is at target/release/greedyclaw
+./target/release/greedyclaw init
 ```
 
 ### Setup
 
 ```bash
-# Create config directory with defaults
-greedyclaw init
-
 # Edit your API keys
-# (get testnet keys at https://testnet.binance.vision/)
 nano ~/.greedyclaw/.env
-```
 
-```env
-BINANCE_API_KEY=your_testnet_api_key
-BINANCE_SECRET_KEY=your_testnet_secret_key
-GREEDYCLAW_AUTH_TOKEN=your_random_token_here
+# Choose your exchange in config
+nano ~/.greedyclaw/config.toml
 ```
 
 ### Run
@@ -95,51 +115,45 @@ GREEDYCLAW_AUTH_TOKEN=your_random_token_here
 greedyclaw serve
 
 # 🦀 GreedyClaw v0.1.0 listening on 127.0.0.1:7878
-#    POST /trade    — execute trades
-#    GET  /status   — health + risk snapshot
-#    GET  /balance  — account balances
-#    GET  /positions — open positions
-#    GET  /trades   — audit log
+#    GET  /dashboard — visual trading dashboard
+#    POST /trade     — execute trades
+#    GET  /status    — health + risk snapshot
 ```
 
 ### First Trade
 
 ```bash
-# From your AI agent, Python script, or just curl:
 curl -X POST http://127.0.0.1:7878/trade \
-  -H "Authorization: Bearer your_random_token_here" \
+  -H "Authorization: Bearer your_token" \
   -H "Content-Type: application/json" \
   -d '{"action": "buy", "symbol": "BTCUSDT", "amount": 0.001}'
 ```
 
-```json
-{
-  "success": true,
-  "order_id": "12345678",
-  "symbol": "BTCUSDT",
-  "side": "buy",
-  "filled_qty": 0.001,
-  "avg_price": 95432.50,
-  "status": "Filled",
-  "commission": 0.00009543,
-  "timestamp": "2026-03-12T10:30:00Z",
-  "risk": {
-    "open_positions": 1,
-    "max_open_positions": 3,
-    "realized_daily_pnl": 0.0,
-    "remaining_daily_limit": 100.0,
-    "trades_last_minute": 1,
-    "max_trades_per_minute": 10
-  }
-}
-```
-
-### CLI Trading
+### Using MT5 (Forex, Gold, Indices)
 
 ```bash
-# Trade directly from the command line (no REST needed)
-greedyclaw trade buy BTCUSDT 0.001
-greedyclaw trade sell BTCUSDT 0.001
+# 1. Start the MT5 bridge (requires MT5 terminal + Python)
+cd mt5-bridge
+pip install -r requirements.txt
+python mt5_bridge.py
+
+# 2. Set exchange = "mt5" in config.toml, then:
+greedyclaw serve
+
+# 3. Trade gold!
+greedyclaw trade buy XAUUSD 0.01
+```
+
+### Using CCXT (Bybit, OKX, Kraken, etc.)
+
+```bash
+# 1. Start the CCXT bridge
+cd mt5-bridge
+pip install ccxt fastapi uvicorn
+CCXT_API_KEY=... CCXT_SECRET=... python ccxt_bridge.py --exchange bybit
+
+# 2. Set exchange = "bybit" in config.toml, then:
+greedyclaw serve
 ```
 
 ## How It Works
@@ -150,109 +164,76 @@ greedyclaw trade sell BTCUSDT 0.001
                         │                                         │
   AI Agent ──POST──►    │  ┌───────────┐   ┌──────────────────┐  │
                         │  │  Auth     │──►│  Risk Engine      │  │
-                        │  │  Middleware│   │                  │  │
-                        │  └───────────┘   │  • Symbol whitelist│  │
-                        │                  │  • Position limits │  │
+                        │  │  Middleware│   │  • Symbol filter  │  │
+                        │  └───────────┘   │  • Position limits│  │
                         │                  │  • Daily loss cap  │  │
                         │                  │  • Rate limiter    │  │
-                        │                  │    (circuit breaker│  │
-                        │                  │     for LLM loops) │  │
                         │                  └────────┬───────────┘  │
                         │                           │ OK           │
                         │                  ┌────────▼───────────┐  │
                         │                  │  Exchange Layer     │  │
                         │                  │  (trait-based)      │  │
                         │                  │                     │  │
-                        │                  │  ► Binance (REST)   │  │
-                        │                  │  ► Solana (planned) │  │
-                        │                  │  ► More exchanges   │  │
+                        │                  │  ► Binance (native) │  │
+                        │                  │  ► PumpFun (native) │  │
+                        │                  │  ► MT5 (bridge)     │  │
+                        │                  │  ► CCXT (bridge)    │  │
                         │                  └────────┬───────────┘  │
                         │                           │ Fill         │
                         │                  ┌────────▼───────────┐  │
                         │                  │  Audit Log          │  │
                         │                  │  SQLite + JSONL     │  │
-                        │                  │  (crash-safe)       │  │
                         │                  └────────────────────┘  │
                         └─────────────────────────────────────────┘
 ```
 
-**Key design decisions:**
-- **Local-first** — your API keys never leave your machine
-- **Trait-based exchange abstraction** — adding a new exchange = implementing 5 methods
-- **Mandatory risk engine** — cannot be disabled, sane defaults out of the box
-- **Dual audit log** — SQLite for queries + JSONL with fsync for crash recovery
-- **LLM-friendly errors** — every error response includes a `suggestion` field
-
 ## API Reference
 
-All endpoints require `Authorization: Bearer <token>` header.
+All endpoints require `Authorization: Bearer <token>` header (except `/dashboard`).
 
-### `POST /trade`
+### Trading
 
-Execute a trade.
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/trade` | Execute a trade (buy/sell, market/limit) |
+| `DELETE` | `/order/{id}` | Cancel an open order |
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `action` | string | Yes | `"buy"` or `"sell"` |
-| `symbol` | string | Yes | Trading pair, e.g. `"BTCUSDT"` |
-| `amount` | number | Yes | Quantity in base asset |
-| `order_type` | string | No | `"market"` (default) or `"limit"` |
-| `price` | number | No | Required for limit orders |
+### Account
 
-### `GET /status`
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/status` | Health check + risk state |
+| `GET` | `/balance` | Account balances |
+| `GET` | `/positions` | Open positions + unrealized PnL |
+| `GET` | `/price/{symbol}` | Current price |
+| `GET` | `/trades` | Recent trades from audit log |
+| `GET` | `/trades/stats` | Trade statistics |
+| `GET` | `/trades/pnl` | PnL time series |
 
-Health check + current risk state.
+### Scanner (PumpFun Token Discovery)
 
-### `GET /balance`
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/scanner/start` | Start gRPC token scanner |
+| `POST` | `/scanner/stop` | Stop scanner |
+| `GET` | `/scanner/status` | Scanner metrics + top tokens |
+| `GET` | `/scanner/tokens` | All tracked tokens |
+| `GET/PUT` | `/scanner/config` | Get/update scanner config |
+| `GET` | `/scanner/positions` | Scanner-managed positions |
 
-Account balances from the exchange.
+### Dashboard
 
-### `GET /positions`
-
-Open positions with current prices and unrealized PnL.
-
-### `GET /price/{symbol}`
-
-Current price for a symbol.
-
-### `GET /trades`
-
-Recent trades from the audit log (last 50).
-
-### `DELETE /order/{symbol}:{orderId}`
-
-Cancel an open order.
-
-### Error Responses
-
-Every error includes machine-readable `code` and human-readable `suggestion`:
-
-```json
-{
-  "success": false,
-  "error": "Risk limit exceeded: daily loss limit $100 reached",
-  "code": "RISK_VIOLATION",
-  "suggestion": "Risk limit hit. Check GET /status for current limits and usage."
-}
-```
-
-| Code | HTTP | Meaning |
-|------|------|---------|
-| `RISK_VIOLATION` | 403 | Trade blocked by risk engine |
-| `RATE_LIMIT` | 429 | Too many trades/minute (possible LLM loop) |
-| `VALIDATION_ERROR` | 400 | Bad request parameters |
-| `EXCHANGE_ERROR` | 502 | Exchange rejected the order |
-| `EXCHANGE_UNREACHABLE` | 502 | Cannot reach exchange API |
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/dashboard` | Visual trading dashboard (no auth) |
 
 ## Risk Engine
 
 The risk engine is **mandatory and cannot be disabled**. This is by design — an AI agent with unrestricted exchange access is a liability.
 
-### Protections
-
 | Protection | Default | Purpose |
 |------------|---------|---------|
-| **Symbol whitelist** | `["BTCUSDT", "ETHUSDT"]` | Prevent trading unknown pairs |
+| **Symbol whitelist** | configurable | Prevent trading unknown pairs |
 | **Max position size** | $500 | Cap single trade exposure |
 | **Max daily loss** | $100 | Kill switch — stops all trading |
 | **Max open positions** | 3 | Prevent over-diversification |
@@ -260,12 +241,16 @@ The risk engine is **mandatory and cannot be disabled**. This is by design — a
 
 ### Why a Circuit Breaker?
 
-LLMs sometimes enter infinite loops when they receive unexpected errors. Without a rate limit, a buggy agent can:
-1. Place an order → get error
-2. Retry immediately → get error
-3. Repeat 1000x → drain account on fees
+LLMs sometimes enter infinite loops when they receive unexpected errors. GreedyClaw's rate limiter detects this pattern and returns `429 RATE_LIMIT` with *"Possible hallucination loop"* — giving the agent (and you) time to recover.
 
-GreedyClaw's rate limiter detects this pattern and returns `429 RATE_LIMIT` with the message *"Possible hallucination loop"* — giving the agent (and you) time to recover.
+## Scanner
+
+GreedyClaw includes a built-in **PumpFun token scanner** that streams Solana transactions via Yellowstone gRPC, scores tokens using the LAZARUS strategy (Optuna-optimized), and can autonomously trade:
+
+- Real-time bonding curve tracking
+- Anti-rug filters (whale detection, sell ratio, zombie tokens)
+- Configurable trigger parameters via API
+- Visual dashboard with live token metrics
 
 ## Configuration
 
@@ -273,12 +258,14 @@ GreedyClaw's rate limiter detects this pattern and returns `429 RATE_LIMIT` with
 
 ```toml
 [server]
-host = "127.0.0.1"    # Loopback only — never expose to network
+host = "127.0.0.1"
 port = 7878
 
 [exchange]
+# Native: "binance", "pumpfun", "pumpswap", "mt5"
+# CCXT: "bybit", "okx", "kraken", "coinbase", "kucoin", ...
 name = "binance"
-testnet = true          # Start with testnet, always
+testnet = true
 
 [risk]
 max_position_usd = 500.0
@@ -286,18 +273,24 @@ max_daily_loss_usd = 100.0
 max_open_positions = 3
 allowed_symbols = ["BTCUSDT", "ETHUSDT"]
 max_trades_per_minute = 10
-
-[logging]
-level = "info"          # trace, debug, info, warn, error
-format = "pretty"
 ```
 
 ### `~/.greedyclaw/.env`
 
 ```env
+GREEDYCLAW_AUTH_TOKEN=your_auth_token
+
+# Binance
 BINANCE_API_KEY=your_key
 BINANCE_SECRET_KEY=your_secret
-GREEDYCLAW_AUTH_TOKEN=your_auth_token
+
+# MT5 bridge
+# MT5_BRIDGE_URL=http://127.0.0.1:7879
+
+# CCXT bridge (Bybit, OKX, etc.)
+# CCXT_BRIDGE_URL=http://127.0.0.1:7880
+# CCXT_API_KEY=your_key
+# CCXT_SECRET=your_secret
 ```
 
 ## Architecture
@@ -307,67 +300,50 @@ src/
 ├── main.rs              # CLI: init, serve, trade
 ├── config.rs            # TOML + .env config loading
 ├── server.rs            # Axum router, auth middleware
+├── dashboard.rs         # Embedded HTML/JS dashboard
 ├── error.rs             # LLM-friendly error responses
 ├── risk.rs              # Risk engine (mandatory)
 ├── audit.rs             # SQLite + JSONL dual-write
 ├── exchange/
 │   ├── mod.rs           # Exchange trait (5 methods)
 │   ├── types.rs         # OrderRequest, OrderResult, Balance
-│   └── binance.rs       # Binance REST + HMAC-SHA256
-└── api/
-    ├── mod.rs           # AppState, route registration
-    ├── trade.rs         # POST /trade handler
-    ├── status.rs        # GET endpoints
-    └── types.rs         # Request/response DTOs
+│   ├── binance.rs       # Binance REST + HMAC-SHA256
+│   ├── pumpfun.rs       # PumpFun bonding curve (Solana)
+│   ├── pumpswap.rs      # PumpSwap AMM (Solana)
+│   ├── mt5.rs           # MetaTrader 5 (via bridge)
+│   └── ccxt.rs          # CCXT 100+ exchanges (via bridge)
+├── scanner/
+│   ├── mod.rs           # Scanner service
+│   ├── parser.rs        # PumpFun event parser
+│   ├── aggregator.rs    # In-memory token tracking
+│   ├── scoring.rs       # LAZARUS trigger strategy
+│   ├── strategy.rs      # Entry/exit logic
+│   └── stream.rs        # gRPC streaming
+├── api/
+│   ├── mod.rs           # AppState, route registration
+│   ├── trade.rs         # POST /trade handler
+│   ├── status.rs        # GET endpoints
+│   ├── scanner_api.rs   # Scanner API handlers
+│   └── types.rs         # Request/response DTOs
+└── solana/              # Solana wallet, RPC, TX building
+
+mt5-bridge/
+├── mt5_bridge.py        # MT5 Python bridge (FastAPI)
+├── ccxt_bridge.py       # CCXT Python bridge (FastAPI)
+└── requirements.txt     # Python dependencies
 ```
-
-### Tech Stack
-
-| Component | Choice | Why |
-|-----------|--------|-----|
-| Language | **Rust** | Sub-ms latency, memory safety, no GC pauses |
-| Async | **Tokio** | Industry standard async runtime |
-| HTTP Server | **Axum** | Fast, ergonomic, tower middleware |
-| HTTP Client | **Reqwest** | rustls-tls, no OpenSSL dependency |
-| Database | **rusqlite** | Bundled SQLite, zero system deps |
-| Config | **TOML + dotenvy** | Human-readable, secrets separated |
-| Signing | **HMAC-SHA256** | Binance API standard |
-| Concurrency | **DashMap** | Lock-free concurrent position tracking |
-
-## Adding a New Exchange
-
-GreedyClaw uses a trait-based exchange abstraction. To add a new exchange, implement 5 methods:
-
-```rust
-impl Exchange for MyExchange {
-    fn name(&self) -> &str { "my-exchange" }
-
-    async fn market_order(&self, req: &OrderRequest) -> Result<OrderResult, AppError>;
-    async fn limit_order(&self, req: &OrderRequest) -> Result<OrderResult, AppError>;
-    async fn cancel_order(&self, symbol: &str, order_id: &str) -> Result<(), AppError>;
-    async fn get_balance(&self) -> Result<Balance, AppError>;
-    async fn get_price(&self, symbol: &str) -> Result<f64, AppError>;
-}
-```
-
-The AI agent doesn't need to change — it just calls `POST /trade` and GreedyClaw routes to the right exchange.
 
 ## Roadmap
 
 - [x] **Phase 1: MVP** — Binance Testnet, REST API, risk engine, audit log
-- [ ] **Phase 2: Solana/PumpFun** — Jupiter swaps, Jito tips, gRPC streaming
-- [ ] **Phase 3: Multi-exchange** — Run multiple exchanges simultaneously
-- [ ] **Phase 4: WebSocket** — Real-time price feeds and fill notifications
-- [ ] **Phase 5: MCP Server** — Model Context Protocol for Claude/GPT native integration
-- [ ] **Phase 6: Strategy SDK** — Pluggable strategy modules with backtesting
-
-## Security
-
-- **Keys stay local** — GreedyClaw runs on `127.0.0.1` only. Your API keys and auth tokens never leave your machine.
-- **Bearer token auth** — Every request requires authentication. No anonymous access.
-- **Risk limits** — Even with valid auth, the risk engine prevents catastrophic losses.
-- **Audit trail** — Every trade (success or failure) is logged to SQLite + JSONL with fsync.
-- **No telemetry** — Zero data collection. No phone-home. Fully offline capable.
+- [x] **Phase 2: Solana** — PumpFun + PumpSwap, Ed25519 signing, Jupiter
+- [x] **Phase 3: Dashboard** — Visual trading dashboard, PnL charts
+- [x] **Phase 4: Scanner** — PumpFun token discovery, LAZARUS strategy, gRPC streaming
+- [x] **Phase 5: Multi-exchange** — MT5 (Forex/Gold) + CCXT (100+ exchanges)
+- [ ] **Phase 6: Auto-trade** — Scanner triggers → real trade execution
+- [ ] **Phase 7: WebSocket** — Real-time feeds and fill notifications
+- [ ] **Phase 8: MCP Server** — Model Context Protocol for Claude/GPT native integration
+- [ ] **Phase 9: Strategy SDK** — Pluggable strategy modules with backtesting
 
 ## Use with AI Agents
 
@@ -376,63 +352,48 @@ The AI agent doesn't need to change — it just calls `POST /trade` and GreedyCl
 ```python
 import requests
 
-GATEWAY = "http://127.0.0.1:7878"
-TOKEN = "your_auth_token"
-HEADERS = {"Authorization": f"Bearer {TOKEN}", "Content-Type": "application/json"}
+GW = "http://127.0.0.1:7878"
+H = {"Authorization": "Bearer your_token", "Content-Type": "application/json"}
 
-# Buy
-r = requests.post(f"{GATEWAY}/trade", headers=HEADERS, json={
-    "action": "buy", "symbol": "BTCUSDT", "amount": 0.001
-})
-print(r.json())
+# Buy gold on MT5
+requests.post(f"{GW}/trade", headers=H, json={"action": "buy", "symbol": "XAUUSD", "amount": 0.01})
+
+# Buy BTC on Binance
+requests.post(f"{GW}/trade", headers=H, json={"action": "buy", "symbol": "BTCUSDT", "amount": 0.001})
 
 # Check positions
-r = requests.get(f"{GATEWAY}/positions", headers=HEADERS)
-print(r.json())
+requests.get(f"{GW}/positions", headers=H).json()
 ```
 
 ### Claude / GPT (Function Calling)
 
-GreedyClaw's API is designed for LLM function calling. Define a tool:
-
 ```json
 {
   "name": "execute_trade",
-  "description": "Execute a trade via GreedyClaw gateway",
+  "description": "Execute a trade via GreedyClaw. Supports 100+ exchanges.",
   "parameters": {
     "type": "object",
     "properties": {
       "action": {"type": "string", "enum": ["buy", "sell"]},
-      "symbol": {"type": "string", "description": "Trading pair e.g. BTCUSDT"},
-      "amount": {"type": "number", "description": "Quantity in base asset"}
+      "symbol": {"type": "string", "description": "Trading pair (BTCUSDT, XAUUSD, EURUSD, etc.)"},
+      "amount": {"type": "number", "description": "Quantity"}
     },
     "required": ["action", "symbol", "amount"]
   }
 }
 ```
 
-### curl
+## Security
 
-```bash
-# Status
-curl http://127.0.0.1:7878/status -H "Authorization: Bearer $TOKEN"
-
-# Trade
-curl -X POST http://127.0.0.1:7878/trade \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"action": "buy", "symbol": "ETHUSDT", "amount": 0.01}'
-
-# Positions
-curl http://127.0.0.1:7878/positions -H "Authorization: Bearer $TOKEN"
-```
+- **Keys stay local** — runs on `127.0.0.1` only
+- **Bearer token auth** — every request authenticated
+- **Mandatory risk limits** — cannot be disabled
+- **Audit trail** — SQLite + JSONL with fsync
+- **No telemetry** — zero data collection, fully offline
 
 ## Contributing
 
-Contributions welcome! GreedyClaw is in early development — there's a lot to build.
-
 ```bash
-# Development
 git clone https://github.com/GreedyClaw/GreedyClaw.git
 cd GreedyClaw
 cargo build

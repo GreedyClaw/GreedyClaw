@@ -27,6 +27,8 @@ use api::AppState;
 use audit::AuditLog;
 use config::{Config, Secrets};
 use exchange::binance::BinanceExchange;
+use exchange::ccxt::CcxtExchange;
+use exchange::mt5::Mt5Exchange;
 use exchange::pumpfun::PumpFunExchange;
 use exchange::pumpswap::PumpSwapExchange;
 use exchange::{Exchange, OrderRequest, OrderSide, OrderType};
@@ -103,6 +105,12 @@ fn do_init() -> anyhow::Result<()> {
     println!("  binance   — Binance Spot (testnet/production)");
     println!("  pumpfun   — PumpFun bonding curve tokens (Solana)");
     println!("  pumpswap  — PumpSwap AMM graduated tokens (Solana)");
+    println!("  mt5       — MetaTrader 5 (Forex, Gold, Indices, Stocks, Crypto)");
+    println!("  bybit     — Bybit (via CCXT bridge)");
+    println!("  okx       — OKX (via CCXT bridge)");
+    println!("  kraken    — Kraken (via CCXT bridge)");
+    println!("  coinbase  — Coinbase (via CCXT bridge)");
+    println!("  ...       — 100+ more via CCXT (run ccxt_bridge.py --exchange <name>)");
     println!("\nNext: edit config.toml and .env, then run `greedyclaw serve`");
     Ok(())
 }
@@ -190,7 +198,37 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
             log_risk_config(&config);
             server::serve(state, secrets, &config.server.host, config.server.port).await
         }
-        other => anyhow::bail!("Unknown exchange '{}'. Use: binance, pumpfun, pumpswap", other),
+        "mt5" => {
+            let bridge_url = std::env::var("MT5_BRIDGE_URL").ok();
+            let exchange = Mt5Exchange::new(bridge_url);
+            let state = Arc::new(AppState {
+                exchange,
+                risk: RiskEngine::new(config.risk.clone()),
+                audit: Mutex::new(AuditLog::new(&config::config_dir())?),
+                config: config.clone(),
+                scanner: Scanner::new(),
+            });
+            info!("[INIT] Exchange: {} | Bridge: {}", state.exchange.name(),
+                  std::env::var("MT5_BRIDGE_URL").unwrap_or_else(|_| "http://127.0.0.1:7879".into()));
+            log_risk_config(&config);
+            server::serve(state, secrets, &config.server.host, config.server.port).await
+        }
+        other => {
+            // Try as CCXT exchange (bybit, okx, kraken, coinbase, etc.)
+            let bridge_url = std::env::var("CCXT_BRIDGE_URL").ok();
+            let exchange = CcxtExchange::new(other.to_string(), bridge_url);
+            let state = Arc::new(AppState {
+                exchange,
+                risk: RiskEngine::new(config.risk.clone()),
+                audit: Mutex::new(AuditLog::new(&config::config_dir())?),
+                config: config.clone(),
+                scanner: Scanner::new(),
+            });
+            info!("[INIT] Exchange: CCXT/{} | Bridge: {}", other,
+                  std::env::var("CCXT_BRIDGE_URL").unwrap_or_else(|_| "http://127.0.0.1:7880".into()));
+            log_risk_config(&config);
+            server::serve(state, secrets, &config.server.host, config.server.port).await
+        }
     }
 }
 
@@ -240,7 +278,19 @@ async fn do_trade(config: Config, secrets: &Secrets, action: &str, symbol: &str,
             let result = ex.market_order(&req).await.map_err(|e| anyhow::anyhow!("{}", e))?;
             print_result(&result);
         }
-        other => anyhow::bail!("Unknown exchange '{}'", other),
+        "mt5" => {
+            let bridge_url = std::env::var("MT5_BRIDGE_URL").ok();
+            let ex = Mt5Exchange::new(bridge_url);
+            let result = ex.market_order(&req).await.map_err(|e| anyhow::anyhow!("{}", e))?;
+            print_result(&result);
+        }
+        other => {
+            // CCXT — any exchange (bybit, okx, kraken, coinbase, etc.)
+            let bridge_url = std::env::var("CCXT_BRIDGE_URL").ok();
+            let ex = CcxtExchange::new(other.to_string(), bridge_url);
+            let result = ex.market_order(&req).await.map_err(|e| anyhow::anyhow!("{}", e))?;
+            print_result(&result);
+        }
     }
     Ok(())
 }

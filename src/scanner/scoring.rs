@@ -1,5 +1,5 @@
-/// Token scoring engine — LAZARUS trigger + anti-rug filters.
-/// Ported from RAMI/MOON/src/trigger.rs with configurable parameters.
+//! Token scoring engine — LAZARUS trigger + anti-rug filters.
+//! Ported from RAMI/MOON/src/trigger.rs with configurable parameters.
 
 use serde::{Deserialize, Serialize};
 use tracing::info;
