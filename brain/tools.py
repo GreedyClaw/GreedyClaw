@@ -2,8 +2,44 @@
 Each tool maps to a GreedyClaw REST API call or web action."""
 
 import json
+import ipaddress
+from urllib.parse import urlparse
 import httpx
 from dataclasses import dataclass
+
+
+# SSRF protection — block internal/private IP ranges
+_BLOCKED_NETWORKS = [
+    ipaddress.ip_network("127.0.0.0/8"),      # loopback
+    ipaddress.ip_network("10.0.0.0/8"),        # private class A
+    ipaddress.ip_network("172.16.0.0/12"),     # private class B
+    ipaddress.ip_network("192.168.0.0/16"),    # private class C
+    ipaddress.ip_network("169.254.0.0/16"),    # link-local
+    ipaddress.ip_network("0.0.0.0/8"),         # unspecified
+    ipaddress.ip_network("::1/128"),           # IPv6 loopback
+    ipaddress.ip_network("fc00::/7"),          # IPv6 private
+    ipaddress.ip_network("fe80::/10"),         # IPv6 link-local
+]
+
+
+def _is_ssrf_safe(url: str) -> bool:
+    """Check if URL is safe to fetch (not pointing to internal/private IPs)."""
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname or ""
+        # Block common internal hostnames
+        if hostname in ("localhost", "metadata.google.internal", "169.254.169.254"):
+            return False
+        # Resolve and check IP
+        import socket
+        for info in socket.getaddrinfo(hostname, parsed.port or 443):
+            ip = ipaddress.ip_address(info[4][0])
+            for net in _BLOCKED_NETWORKS:
+                if ip in net:
+                    return False
+        return True
+    except Exception:
+        return False
 
 
 @dataclass
@@ -178,10 +214,18 @@ class TradingTools:
             return ToolResult(name="web_search", result=f"Search failed: {e}", success=False)
 
     async def _fetch_url(self, data: dict) -> ToolResult:
+        url = data.get("url", "")
+        # SSRF protection — block internal/private IPs
+        if not _is_ssrf_safe(url):
+            return ToolResult(
+                name="fetch_url",
+                result="Blocked: URL points to internal/private network",
+                success=False,
+            )
         try:
             import trafilatura
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(data["url"], headers={"User-Agent": "Mozilla/5.0"})
+                resp = await client.get(url, headers={"User-Agent": "Mozilla/5.0"})
                 text = trafilatura.extract(resp.text, include_comments=False) or resp.text[:3000]
                 return ToolResult(name="fetch_url", result=text[:4000])
         except Exception as e:

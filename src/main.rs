@@ -78,6 +78,14 @@ fn init_logging(level: &str) {
         .init();
 }
 
+/// Generate a cryptographically secure random hex token (32 bytes = 64 hex chars).
+fn generate_auth_token() -> String {
+    use rand::Rng;
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill(&mut bytes);
+    hex::encode(bytes)
+}
+
 /// Create ~/.greedyclaw/ with template files.
 fn do_init() -> anyhow::Result<()> {
     let dir = config::config_dir();
@@ -94,11 +102,26 @@ fn do_init() -> anyhow::Result<()> {
     }
 
     if !env_path.exists() {
-        std::fs::write(&env_path, config::DEFAULT_ENV)?;
+        // Generate a cryptographically secure auth token
+        let token = generate_auth_token();
+        let env_content = config::DEFAULT_ENV.replace(
+            "change_me_to_random_hex_token",
+            &token,
+        );
+        std::fs::write(&env_path, env_content)?;
         println!("Created {}", env_path.display());
-        println!("\n  Edit {} and set your API keys!", env_path.display());
+        println!("  Auth token generated (64-char hex, cryptographically random)");
+        println!("\n  Edit {} and set your exchange API keys!", env_path.display());
     } else {
         println!("Already exists: {}", env_path.display());
+    }
+
+    // Warn if auth token is still the placeholder
+    if let Ok(env_content) = std::fs::read_to_string(&env_path) {
+        if env_content.contains("change_me_to_random_hex_token") {
+            println!("\n  WARNING: Auth token is still the default placeholder!");
+            println!("  Run `greedyclaw init` again with a fresh .env, or replace manually.");
+        }
     }
 
     println!("\nSupported exchanges:");
@@ -160,7 +183,7 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
             let state = Arc::new(AppState {
                 exchange,
                 risk: RiskEngine::new(config.risk.clone()),
-                audit: Mutex::new(AuditLog::new(&config::config_dir())?),
+                audit: Mutex::new(AuditLog::new(&config::config_dir(), &secrets.auth_token)?),
                 config: config.clone(),
                 scanner: Scanner::new(),
             });
@@ -175,7 +198,7 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
             let state = Arc::new(AppState {
                 exchange,
                 risk: RiskEngine::new(config.risk.clone()),
-                audit: Mutex::new(AuditLog::new(&config::config_dir())?),
+                audit: Mutex::new(AuditLog::new(&config::config_dir(), &secrets.auth_token)?),
                 config: config.clone(),
                 scanner: Scanner::new(),
             });
@@ -190,7 +213,7 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
             let state = Arc::new(AppState {
                 exchange,
                 risk: RiskEngine::new(config.risk.clone()),
-                audit: Mutex::new(AuditLog::new(&config::config_dir())?),
+                audit: Mutex::new(AuditLog::new(&config::config_dir(), &secrets.auth_token)?),
                 config: config.clone(),
                 scanner: Scanner::new(),
             });
@@ -204,7 +227,7 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
             let state = Arc::new(AppState {
                 exchange,
                 risk: RiskEngine::new(config.risk.clone()),
-                audit: Mutex::new(AuditLog::new(&config::config_dir())?),
+                audit: Mutex::new(AuditLog::new(&config::config_dir(), &secrets.auth_token)?),
                 config: config.clone(),
                 scanner: Scanner::new(),
             });
@@ -220,7 +243,7 @@ async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()
             let state = Arc::new(AppState {
                 exchange,
                 risk: RiskEngine::new(config.risk.clone()),
-                audit: Mutex::new(AuditLog::new(&config::config_dir())?),
+                audit: Mutex::new(AuditLog::new(&config::config_dir(), &secrets.auth_token)?),
                 config: config.clone(),
                 scanner: Scanner::new(),
             });

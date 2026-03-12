@@ -47,12 +47,24 @@ impl TradeRequest {
             return Err("Limit orders require 'price' field.".into());
         }
 
-        if self.amount <= 0.0 {
-            return Err("'amount' must be positive.".into());
+        if !self.amount.is_finite() || self.amount <= 0.0 {
+            return Err("'amount' must be a finite positive number.".into());
         }
 
         if self.symbol.is_empty() {
             return Err("'symbol' is required.".into());
+        }
+
+        // Symbol length sanity check (prevent oversized strings)
+        if self.symbol.len() > 20 {
+            return Err("'symbol' too long (max 20 chars).".into());
+        }
+
+        // Price validation for limit orders
+        if let Some(price) = self.price {
+            if !price.is_finite() || price <= 0.0 {
+                return Err("'price' must be a finite positive number.".into());
+            }
         }
 
         Ok((side, otype))

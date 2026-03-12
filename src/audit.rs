@@ -1,19 +1,25 @@
 //! Trade audit log: SQLite + JSONL with fsync.
-//! Pattern from RAMI/MOON/src/db.rs — dual-write for crash safety.
+//! Each JSONL entry includes an HMAC-SHA256 integrity signature.
 
 use crate::exchange::types::*;
 use crate::risk::RiskSnapshot;
 
 use anyhow::Result;
 use chrono::Utc;
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
 use tracing::{error, info};
 
+type HmacSha256 = Hmac<Sha256>;
+
 pub struct AuditLog {
     conn: rusqlite::Connection,
     jsonl_path: PathBuf,
+    /// HMAC key for audit log integrity (derived from auth token)
+    hmac_key: Vec<u8>,
 }
 
 /// A single audit entry combining request, result, and risk state.
@@ -33,13 +39,13 @@ pub struct AuditEntry {
 }
 
 impl AuditLog {
-    pub fn new(dir: &PathBuf) -> Result<Self> {
+    pub fn new(dir: &PathBuf, auth_token: &str) -> Result<Self> {
         std::fs::create_dir_all(dir)?;
 
         let db_path = dir.join("trades.db");
         let conn = rusqlite::Connection::open(&db_path)?;
 
-        // WAL mode + synchronous NORMAL (same as MOON)
+        // WAL mode + synchronous NORMAL for crash safety
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
 
         conn.execute_batch(
@@ -60,16 +66,29 @@ impl AuditLog {
                 floating_pnl REAL,
                 open_positions INTEGER,
                 risk_snapshot TEXT,
-                error TEXT
+                error TEXT,
+                hmac TEXT
             )",
         )?;
 
         info!("[AUDIT] Initialized: {}", db_path.display());
 
+        // Derive HMAC key from auth token (so audit integrity is tied to the gateway instance)
+        let hmac_key = format!("greedyclaw-audit-{}", auth_token).into_bytes();
+
         Ok(Self {
             conn,
             jsonl_path: dir.join("trades.jsonl"),
+            hmac_key,
         })
+    }
+
+    /// Compute HMAC-SHA256 signature for an audit entry.
+    fn sign(&self, data: &str) -> String {
+        let mut mac = HmacSha256::new_from_slice(&self.hmac_key)
+            .expect("HMAC key error");
+        mac.update(data.as_bytes());
+        hex::encode(mac.finalize().into_bytes())
     }
 
     /// Record a trade (success or failure).
@@ -77,15 +96,22 @@ impl AuditLog {
         let now = Utc::now().to_rfc3339();
         let risk_json = serde_json::to_string(&entry.risk_snapshot).unwrap_or_default();
 
+        // Create integrity payload: timestamp|symbol|side|qty|price|status
+        let integrity_payload = format!(
+            "{}|{}|{}|{}|{}|{:?}",
+            now, entry.symbol, entry.side, entry.filled_qty, entry.avg_price, entry.status
+        );
+        let hmac_sig = self.sign(&integrity_payload);
+
         self.conn.execute(
             "INSERT INTO trades (
                 timestamp, client_order_id, exchange_order_id,
                 symbol, side, order_type,
                 requested_qty, filled_qty, avg_price, status, commission,
                 realized_daily_pnl, floating_pnl, open_positions,
-                risk_snapshot, error
+                risk_snapshot, error, hmac
             ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17
             )",
             rusqlite::params![
                 now,
@@ -104,16 +130,17 @@ impl AuditLog {
                 entry.risk_snapshot.open_positions as i64,
                 risk_json,
                 entry.error,
+                hmac_sig,
             ],
         )?;
 
-        // JSONL with fsync (crash-safe append)
-        self.write_jsonl(entry, &now);
+        // JSONL with fsync (crash-safe append) — includes HMAC
+        self.write_jsonl(entry, &now, &hmac_sig);
 
         Ok(())
     }
 
-    fn write_jsonl(&self, entry: &AuditEntry, timestamp: &str) {
+    fn write_jsonl(&self, entry: &AuditEntry, timestamp: &str, hmac_sig: &str) {
         let json = serde_json::json!({
             "source": "greedyclaw",
             "timestamp": timestamp,
@@ -129,6 +156,7 @@ impl AuditLog {
             "commission": entry.commission,
             "risk": entry.risk_snapshot,
             "error": entry.error,
+            "hmac": hmac_sig,
         });
 
         match OpenOptions::new()

@@ -10,19 +10,23 @@ use axum::response::Response;
 use axum::routing::{delete, get, post};
 use axum::Router;
 use std::sync::Arc;
+use subtle::ConstantTimeEq;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 
-/// Bearer token auth middleware.
+/// Maximum request body size (1 MB) — prevents OOM from oversized payloads.
+const MAX_BODY_SIZE: usize = 1_048_576;
+
+/// Bearer token auth middleware with constant-time comparison.
+/// Uses `subtle::ConstantTimeEq` to prevent timing side-channel attacks.
 async fn auth_middleware(
     req: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // Extract token from state — we store it in request extensions during setup
     let expected = req
         .extensions()
         .get::<AuthToken>()
-        .map(|t| t.0.clone())
+        .map(|t| t.0.as_bytes().to_vec())
         .unwrap_or_default();
 
     let provided = req
@@ -32,7 +36,13 @@ async fn auth_middleware(
         .and_then(|v| v.strip_prefix("Bearer "))
         .unwrap_or("");
 
-    if provided.is_empty() || provided != expected {
+    // Constant-time comparison — prevents timing attacks on auth token.
+    // Length check is not constant-time but that's acceptable (length is not secret).
+    if provided.is_empty()
+        || expected.is_empty()
+        || provided.len() != expected.len()
+        || provided.as_bytes().ct_eq(&expected).unwrap_u8() != 1
+    {
         return Err(StatusCode::UNAUTHORIZED);
     }
 
@@ -69,6 +79,8 @@ pub fn build_router<E: Exchange + Clone>(
         .route("/scanner/positions", get(api::scanner_api::handle_scanner_positions::<E>))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
+        // Request body size limit — prevents OOM attacks from oversized payloads
+        .layer(axum::extract::DefaultBodyLimit::max(MAX_BODY_SIZE))
         .layer(middleware::from_fn(move |mut req: Request, next: Next| {
             let token = auth_token.clone();
             async move {

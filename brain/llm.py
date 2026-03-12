@@ -1,6 +1,5 @@
 """Multi-provider LLM layer — Anthropic, OpenAI, Google Gemini, Ollama, DeepSeek.
-Supports automatic failover, rotation on rate limits, and unified tool calling.
-Inspired by OpenClaw's model-auth.ts pattern."""
+Supports automatic failover, rotation on rate limits, and unified tool calling."""
 
 import os
 import json
@@ -257,8 +256,10 @@ class LLMRouter:
                 for t in tools
             ]}]
 
+        # API key in header (not URL) — URL-embedded keys leak via proxies/logs
         resp = await self._client.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{p.model}:generateContent?key={p.api_key}",
+            f"https://generativelanguage.googleapis.com/v1beta/models/{p.model}:generateContent",
+            headers={"x-goog-api-key": p.api_key, "Content-Type": "application/json"},
             json=body,
         )
         resp.raise_for_status()

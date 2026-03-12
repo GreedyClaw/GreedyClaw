@@ -101,9 +101,28 @@ impl IntoResponse for AppError {
             ),
         };
 
+        // Sanitize: never leak internal error details to clients.
+        // Full error is logged server-side; client gets safe message.
+        let safe_error = match &self {
+            AppError::Internal(_) => "Internal server error".to_string(),
+            AppError::Http(_) => "Exchange unreachable".to_string(),
+            AppError::Exchange(_) => "Exchange rejected the request".to_string(),
+            AppError::ExchangeUnreachable(_) => "Exchange bridge unreachable".to_string(),
+            // Safe to expose (user-facing info only)
+            AppError::Validation(msg) => msg.clone(),
+            AppError::RiskViolation(_) => "Risk limit exceeded. Check GET /status.".to_string(),
+            AppError::RateLimit(_) => "Rate limit exceeded. Wait before retrying.".to_string(),
+            AppError::ExchangeApi { code: c, .. } => format!("Exchange error code {c}"),
+            AppError::NotFound(msg) => msg.clone(),
+            AppError::Unauthorized => "Unauthorized".to_string(),
+        };
+
+        // Log full error server-side (never sent to client)
+        tracing::warn!(error = %self, error_code = code, "API error");
+
         let body = ErrorResponse {
             success: false,
-            error: self.to_string(),
+            error: safe_error,
             code,
             suggestion,
         };

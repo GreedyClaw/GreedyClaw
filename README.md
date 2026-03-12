@@ -7,7 +7,7 @@
 <p align="center">
   <strong>AI researches. AI decides. GreedyClaw executes.</strong><br/>
   Self-hosted autonomous trading agent with Rust execution gateway.<br/>
-  <strong>6 LLM providers</strong> &bull; <strong>100+ exchanges</strong> &bull; crypto, forex, gold, stocks, DeFi.
+  <strong>Security-first</strong> &bull; <strong>6 LLM providers</strong> &bull; <strong>100+ exchanges</strong> &bull; crypto, forex, gold, stocks, DeFi.
 </p>
 
 <p align="center">
@@ -21,8 +21,9 @@
   <a href="#quickstart">Quickstart</a> &bull;
   <a href="#ai-brain">AI Brain</a> &bull;
   <a href="#supported-exchanges">Exchanges</a> &bull;
-  <a href="#mcp-server">MCP</a> &bull;
+  <a href="#security--why-greedyclaw-is-built-different">Security</a> &bull;
   <a href="#risk-engine">Risk Engine</a> &bull;
+  <a href="#mcp-server">MCP</a> &bull;
   <a href="#scanner">Scanner</a> &bull;
   <a href="#docker">Docker</a> &bull;
   <a href="#roadmap">Roadmap</a>
@@ -32,11 +33,12 @@
 
 ## The Problem
 
-Every AI trading project reinvents the same wheel: exchange authentication, order signing, position tracking, risk limits. Meanwhile, one hallucination loop can drain your entire account in seconds.
+Every AI trading project reinvents the same wheel: exchange authentication, order signing, position tracking, risk limits. Meanwhile, one hallucination loop can drain your entire account in seconds. And most AI agent frameworks? [15,200 instances vulnerable to remote code execution](https://github.com/GreedyClaw/GreedyClaw#security--why-greedyclaw-is-built-different).
 
-**GreedyClaw** is a fully autonomous AI trading system:
+**GreedyClaw** is a fully autonomous AI trading system built with **security as the #1 priority**:
 - **Brain** (Python) — researches markets, analyzes news, makes decisions using any LLM
 - **Gateway** (Rust) — executes trades, enforces risk limits, keeps audit trail
+- **Isolation** — Brain cannot access filesystem, shell, or exchanges directly. All trades pass through mandatory risk checks
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -149,7 +151,7 @@ curl -X POST http://127.0.0.1:7878/trade \
 
 ## AI Brain
 
-The Brain is an autonomous Python agent that researches markets and trades through the Gateway. Inspired by the [OpenClaw](https://github.com/openclaw/openclaw) agent architecture.
+The Brain is an autonomous Python agent that researches markets and trades through the Gateway.
 
 ### How it works
 
@@ -489,8 +491,7 @@ GreedyClaw/
 │   └── requirements.txt
 │
 ├── integrations/
-│   ├── mcp-server/              # MCP server (12 tools)
-│   └── openclaw-skill/          # OpenClaw skill integration
+│   └── mcp-server/              # MCP server (12 tools)
 │
 ├── Dockerfile                   # Rust gateway image
 ├── docker-compose.yml           # Full stack: gateway + brain + bridges
@@ -551,14 +552,97 @@ requests.get(f"{GW}/positions", headers=H).json()
 }
 ```
 
-## Security
+## Security — Why GreedyClaw Is Built Different
 
-- **Keys stay local** — runs on `127.0.0.1` only
-- **Bearer token auth** — every request authenticated
-- **Mandatory risk limits** — cannot be disabled
-- **Audit trail** — SQLite + JSONL with fsync
-- **No telemetry** — zero data collection, fully offline
-- **LLM failover** — if one provider goes down, Brain switches automatically
+Most AI agent frameworks treat security as an afterthought. We studied every major incident in the space — **and designed GreedyClaw so they can't happen here.**
+
+### Security Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                  SECURITY LAYERS                         │
+│                                                          │
+│  ┌─── Network ──────────────────────────────────────┐   │
+│  │  bind 127.0.0.1 ONLY (no remote by default)      │   │
+│  │  No admin panel exposed to internet               │   │
+│  │  No mDNS broadcast                                │   │
+│  └───────────────────────────────────────────────────┘   │
+│  ┌─── Authentication ───────────────────────────────┐   │
+│  │  Bearer token on EVERY request (no exceptions)    │   │
+│  │  Token stored in ~/.greedyclaw/.env (not in URL)  │   │
+│  │  No default credentials shipped                   │   │
+│  └───────────────────────────────────────────────────┘   │
+│  ┌─── Financial Safety ─────────────────────────────┐   │
+│  │  Risk Engine: MANDATORY, cannot be disabled       │   │
+│  │  ├─ Max position size per trade                   │   │
+│  │  ├─ Daily loss kill switch                        │   │
+│  │  ├─ Symbol whitelist                              │   │
+│  │  ├─ Max open positions                            │   │
+│  │  └─ Hallucination loop detector (rate limiter)    │   │
+│  └───────────────────────────────────────────────────┘   │
+│  ┌─── Audit & Recovery ─────────────────────────────┐   │
+│  │  SQLite WAL + JSONL dual-write (fsync)            │   │
+│  │  Every trade logged with risk snapshot             │   │
+│  │  Agent cannot modify its own audit trail           │   │
+│  └───────────────────────────────────────────────────┘   │
+│  ┌─── Isolation ────────────────────────────────────┐   │
+│  │  Brain crash ≠ Gateway crash (separate processes) │   │
+│  │  Risk engine runs in Gateway (Rust), not Brain    │   │
+│  │  Brain has NO direct exchange access               │   │
+│  │  All trades go through risk checks — no bypass     │   │
+│  └───────────────────────────────────────────────────┘   │
+│  ┌─── Supply Chain ─────────────────────────────────┐   │
+│  │  No plugin marketplace — skills are local files   │   │
+│  │  No remote code execution from third parties      │   │
+│  │  Zero telemetry, zero data collection              │   │
+│  └───────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────┘
+```
+
+### GreedyClaw vs Typical AI Agent Frameworks
+
+Most AI agent frameworks give the LLM **shell access, filesystem access, browser automation**, and run with full user privileges. One prompt injection = full system compromise. Here's how GreedyClaw is different:
+
+| Threat | Typical AI Frameworks | GreedyClaw |
+|--------|----------------------|------------|
+| **Remote Code Execution** | Admin UI exposed to network. Thousands of vulnerable instances found on public internet | **No admin UI.** REST API only, bound to `127.0.0.1`. Zero attack surface from network |
+| **Supply Chain Attack** | Plugin marketplaces with unverified extensions — backdoors, credential theft | **No marketplace.** Skills are local SKILL.md files in your repo. You control every line |
+| **Credential Leak** | Cloud databases with API tokens, misconfigured storage | **No cloud database.** Keys in local `~/.greedyclaw/.env`. Tokens never leave your machine |
+| **Token Exposure** | Auth tokens leaked via URL query strings, localStorage, WebSocket hijacking | **Token in Authorization header only.** Never in URLs, never in browser storage |
+| **Sandbox Escape** | Container reuse bugs, privilege escalation from sandbox to host | **No sandbox needed.** Brain communicates via HTTP only — cannot access host filesystem or shell |
+| **Network Exposure** | Instances accessible from public internet, mDNS broadcasts presence on LAN | **Loopback only** by default. No mDNS. No discovery. Invisible on the network |
+| **Financial Safety** | No financial risk limits. AI agent can drain entire exchange account in a loop | **Mandatory risk engine.** Daily loss cap, position limits, hallucination detector. Cannot be disabled |
+
+### The Core Difference
+
+> **Other frameworks** give AI agents system-level access and hope nothing goes wrong.
+> **GreedyClaw** is a financial execution system *designed from day one* to protect your money.
+
+The Brain (AI) communicates with the Gateway (execution) through a single REST API. The Brain cannot:
+- Access the filesystem
+- Execute shell commands
+- Bypass risk limits
+- Modify the audit log
+- Talk to exchanges directly
+
+Even if the LLM is completely compromised by prompt injection, the **worst case** is a trade that passes risk checks — not a system takeover.
+
+### Security Checklist
+
+- [x] Loopback binding (`127.0.0.1`) — not exposed to network
+- [x] Bearer token authentication on every endpoint
+- [x] No default credentials — `greedyclaw init` generates random token
+- [x] Mandatory risk engine — cannot be disabled or bypassed
+- [x] Daily loss kill switch — stops all trading automatically
+- [x] Hallucination loop detector — rate limiter returns 429
+- [x] SQLite + JSONL dual audit trail with fsync
+- [x] Brain/Gateway isolation — crash isolation, privilege separation
+- [x] No plugin marketplace — no supply chain attack vector
+- [x] No telemetry — zero data sent anywhere
+- [x] No admin UI — no XSS/CSRF/WebSocket hijacking surface
+- [x] No shell access for AI agent — REST API only
+- [x] Exchange keys never leave Gateway process
+- [x] LLM API keys never sent to Gateway
 
 ## Contributing
 
@@ -578,5 +662,5 @@ Apache License 2.0 — see [LICENSE](LICENSE) for details.
 <p align="center">
   <img src="src/clawicon.png" width="80"/>
   <br/>
-  <strong>Built with Rust. Powered by AI. Guarded by risk limits.</strong>
+  <strong>Built with Rust. Powered by AI. Secured by design.</strong>
 </p>

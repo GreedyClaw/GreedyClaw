@@ -59,6 +59,10 @@ uuid = { version = "1", features = ["v4"] }
 # Concurrent state
 dashmap = "6"
 
+# Security
+subtle = "2"      # Constant-time comparison for auth tokens
+rand = "0.8"       # Cryptographically secure token generation
+
 # gRPC (Yellowstone/Geyser for PumpFun streaming)
 tonic = { version = "0.12", features = ["tls", "tls-roots"] }
 prost = "0.13"

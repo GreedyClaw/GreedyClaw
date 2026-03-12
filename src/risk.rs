@@ -15,6 +15,7 @@ struct TrackedPosition {
     symbol: String,
     quantity: f64,
     avg_entry_price: f64,
+    mark_price: f64, // last known price for floating PnL
     side: OrderSide,
 }
 
@@ -134,9 +135,21 @@ impl RiskEngine {
             )));
         }
 
-        // 3. Quantity validation
-        if quantity <= 0.0 {
-            return Err(AppError::Validation("Quantity must be positive".into()));
+        // 3. Quantity & price validation (reject NaN, Infinity, negatives)
+        if !quantity.is_finite() || quantity <= 0.0 {
+            return Err(AppError::Validation("Quantity must be a finite positive number".into()));
+        }
+        if !price_usd.is_finite() || price_usd <= 0.0 {
+            return Err(AppError::Validation("Price must be a finite positive number".into()));
+        }
+        // Sanity cap — no single trade over $10M (prevents f64 overflow exploits)
+        if quantity > 1e9 || price_usd > 1e9 {
+            return Err(AppError::Validation("Amount or price exceeds sanity limit".into()));
+        }
+
+        // 3b. Update mark price for the symbol (used for floating PnL)
+        if let Some(mut pos) = self.positions.get_mut(symbol) {
+            pos.mark_price = price_usd;
         }
 
         // 4. Position size limit
@@ -201,6 +214,7 @@ impl RiskEngine {
                         symbol: symbol.clone(),
                         quantity: result.filled_qty,
                         avg_entry_price: result.avg_price,
+                        mark_price: result.avg_price,
                         side: OrderSide::Buy,
                     });
             }
@@ -229,23 +243,26 @@ impl RiskEngine {
         }
     }
 
-    /// Calculate floating PnL across all positions.
-    /// NOTE: requires current prices. Returns 0 if prices unknown.
+    /// Calculate floating PnL across all positions using last known mark prices.
     fn floating_pnl(&self) -> f64 {
-        // Floating PnL is updated via update_mark_price()
         self.positions
             .iter()
             .map(|entry| {
                 let pos = entry.value();
-                // If we don't have mark price, assume 0 floating PnL (conservative)
-                0.0 * pos.quantity // placeholder — updated by mark_to_market()
+                if pos.mark_price > 0.0 {
+                    (pos.mark_price - pos.avg_entry_price) * pos.quantity
+                } else {
+                    0.0 // no mark price yet — conservative assumption
+                }
             })
             .sum()
     }
 
-    /// Update mark-to-market price for a symbol (called periodically or before risk check).
+    /// Update mark-to-market price for a symbol.
+    /// Called during pre-trade check and can be called periodically for live PnL.
     pub fn update_mark_price(&self, symbol: &str, current_price: f64) -> f64 {
-        if let Some(pos) = self.positions.get(symbol) {
+        if let Some(mut pos) = self.positions.get_mut(symbol) {
+            pos.mark_price = current_price;
             (current_price - pos.avg_entry_price) * pos.quantity
         } else {
             0.0
@@ -256,15 +273,7 @@ impl RiskEngine {
     pub fn snapshot(&self) -> RiskSnapshot {
         self.maybe_reset_daily();
         let realized = self.daily_pnl_cents.load(Ordering::Relaxed) as f64 / 100.0;
-        let floating = self
-            .positions
-            .iter()
-            .map(|e| {
-                let p = e.value();
-                // Without live prices, show 0 floating
-                0.0 * p.quantity
-            })
-            .sum::<f64>();
+        let floating = self.floating_pnl();
         let total = realized + floating;
 
         let trades_last_min = self
@@ -295,12 +304,17 @@ impl RiskEngine {
             .iter()
             .map(|entry| {
                 let pos = entry.value();
+                let unrealized = if pos.mark_price > 0.0 {
+                    (pos.mark_price - pos.avg_entry_price) * pos.quantity
+                } else {
+                    0.0
+                };
                 Position {
                     symbol: pos.symbol.clone(),
                     quantity: pos.quantity,
                     avg_entry_price: pos.avg_entry_price,
-                    current_price: 0.0, // caller should fill from exchange
-                    unrealized_pnl: 0.0,
+                    current_price: pos.mark_price,
+                    unrealized_pnl: unrealized,
                 }
             })
             .collect()

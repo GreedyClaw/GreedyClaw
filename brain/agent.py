@@ -1,4 +1,4 @@
-"""Core agent loop — OpenClaw pattern: observe → think → act → log.
+"""Core agent loop: observe → think → act → log.
 The LLM gets tools + market context and decides autonomously."""
 
 import json
@@ -47,7 +47,7 @@ You have tools to:
 
 
 def _load_skills(skills_dir: Path) -> str:
-    """Load skill markdown files (OpenClaw pattern — skills as instructions)."""
+    """Load skill markdown files as LLM instructions."""
     if not skills_dir.exists():
         return ""
     sections = []
@@ -67,9 +67,11 @@ class TradingAgent:
         self.session = SessionLog(config.sessions_dir)
         self.decisions = DecisionLog(config.decisions_log)
         self.skills_dir = Path(__file__).parent / "skills"
+        self._last_confidence = 0  # Track confidence for trade gating
 
     async def run_cycle(self) -> str:
         """Run one observe-think-act cycle. Returns the agent's final response."""
+        self._last_confidence = 0  # Reset per cycle — must log_decision before trading
         print(f"\n{'='*60}")
         print(f"[BRAIN] Cycle started at {datetime.now(timezone.utc).isoformat()}")
         print(f"[BRAIN] LLM providers: {', '.join(self.llm.provider_names)}")
@@ -149,17 +151,40 @@ class TradingAgent:
 
             # Execute and collect results
             tool_results_content = []
+            last_logged_confidence = self._last_confidence
             for tc in response.tool_calls:
                 print(f"  [TOOL] {tc['name']}({json.dumps(tc['input'], ensure_ascii=False)[:100]})")
+
+                # SECURITY: Enforce confidence threshold in CODE, not just prompt.
+                # Block trade execution if no log_decision was called or confidence < 70.
+                if tc["name"] == "trade":
+                    if last_logged_confidence < 70:
+                        result = ToolResult(
+                            name="trade",
+                            result=f"BLOCKED: confidence {last_logged_confidence} < 70. "
+                                   f"Call log_decision with confidence >= 70 before trading.",
+                            success=False,
+                        )
+                        print(f"  [SECURITY] Trade blocked: confidence {last_logged_confidence} < 70")
+                        tool_results_content.append({
+                            "type": "tool_result",
+                            "tool_use_id": tc["id"],
+                            "content": result.result,
+                        })
+                        continue
+
                 result = await self.tools.execute(tc["name"], tc["input"])
                 print(f"  [TOOL] → {result.result[:100]}...")
 
-                # Log decisions specially
+                # Track confidence from log_decision calls
                 if tc["name"] == "log_decision":
+                    confidence = tc["input"].get("confidence", 0)
+                    self._last_confidence = confidence
+                    last_logged_confidence = confidence
                     self.decisions.log_decision(
                         symbol=tc["input"].get("symbol", ""),
                         action=tc["input"].get("action", ""),
-                        confidence=tc["input"].get("confidence", 0),
+                        confidence=confidence,
                         reasoning=tc["input"].get("reasoning", ""),
                         sources=tc["input"].get("sources", []),
                     )

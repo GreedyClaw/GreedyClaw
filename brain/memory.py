@@ -1,4 +1,4 @@
-"""Session & decision persistence — JSONL append-only logs (OpenClaw pattern)."""
+"""Session & decision persistence — JSONL append-only logs."""
 
 import json
 import time
@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 
 class SessionLog:
-    """Append-only JSONL session transcript (like OpenClaw sessions)."""
+    """Append-only JSONL session transcript."""
 
     def __init__(self, sessions_dir: Path):
         self.sessions_dir = sessions_dir
