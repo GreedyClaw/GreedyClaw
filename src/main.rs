@@ -1,15 +1,19 @@
 mod api;
 mod audit;
 mod config;
+mod dashboard;
 mod error;
 mod exchange;
 mod risk;
 mod server;
+mod solana;
 
 use api::AppState;
 use audit::AuditLog;
 use config::{Config, Secrets};
 use exchange::binance::BinanceExchange;
+use exchange::pumpfun::PumpFunExchange;
+use exchange::pumpswap::PumpSwapExchange;
 use exchange::{Exchange, OrderRequest, OrderSide, OrderType};
 use risk::RiskEngine;
 
@@ -37,9 +41,9 @@ enum Commands {
     Trade {
         /// "buy" or "sell"
         action: String,
-        /// Trading pair, e.g., "BTCUSDT"
+        /// Trading pair (e.g., "BTCUSDT") or mint address for Solana
         symbol: String,
-        /// Quantity
+        /// Quantity (base asset for Binance, SOL for Solana buy, tokens for Solana sell)
         amount: f64,
     },
 }
@@ -79,58 +83,109 @@ fn do_init() -> anyhow::Result<()> {
         println!("Already exists: {}", env_path.display());
     }
 
-    println!("\nNext: edit .env with your Binance Testnet keys, then run `greedyclaw serve`");
+    println!("\nSupported exchanges:");
+    println!("  binance   — Binance Spot (testnet/production)");
+    println!("  pumpfun   — PumpFun bonding curve tokens (Solana)");
+    println!("  pumpswap  — PumpSwap AMM graduated tokens (Solana)");
+    println!("\nNext: edit config.toml and .env, then run `greedyclaw serve`");
     Ok(())
 }
 
-/// Build AppState with Binance exchange.
-fn build_state(config: Config, secrets: &Secrets) -> anyhow::Result<Arc<AppState<BinanceExchange>>> {
-    let exchange = BinanceExchange::new(
-        secrets.binance_api_key.clone(),
-        secrets.binance_secret_key.clone(),
-        config.exchange.testnet,
-    );
-
-    let risk = RiskEngine::new(config.risk.clone());
-    let audit = AuditLog::new(&config::config_dir())?;
-
-    Ok(Arc::new(AppState {
-        exchange,
-        risk,
-        audit: Mutex::new(audit),
-        config,
-    }))
+/// Resolve Solana keypair path from env, config, or default.
+fn resolve_keypair_path(secrets: &Secrets, config: &Config) -> anyhow::Result<String> {
+    if let Some(path) = &secrets.solana_keypair_path {
+        if !path.is_empty() {
+            return Ok(path.clone());
+        }
+    }
+    if !config.solana.keypair_path.is_empty() {
+        return Ok(config.solana.keypair_path.clone());
+    }
+    // Default: ~/.config/solana/id.json
+    let default = dirs::home_dir()
+        .map(|h| {
+            h.join(".config")
+                .join("solana")
+                .join("id.json")
+                .to_string_lossy()
+                .to_string()
+        })
+        .unwrap_or_else(|| ".config/solana/id.json".into());
+    Ok(default)
 }
 
-/// Execute a trade directly from CLI.
-async fn do_trade(
-    state: Arc<AppState<BinanceExchange>>,
-    action: &str,
-    symbol: &str,
-    amount: f64,
-) -> anyhow::Result<()> {
+fn log_risk_config(config: &Config) {
+    info!(
+        "[INIT] Risk: max_position=${}, max_daily_loss=${}, max_positions={}, rate_limit={}/min",
+        config.risk.max_position_usd,
+        config.risk.max_daily_loss_usd,
+        config.risk.max_open_positions,
+        config.risk.max_trades_per_minute,
+    );
+}
+
+/// Build AppState and serve — dispatches based on exchange name.
+async fn build_and_serve(config: Config, secrets: &Secrets) -> anyhow::Result<()> {
+    match config.exchange.name.as_str() {
+        "binance" => {
+            let api_key = secrets.binance_api_key.as_ref()
+                .ok_or_else(|| anyhow::anyhow!("BINANCE_API_KEY not set"))?;
+            let secret_key = secrets.binance_secret_key.as_ref()
+                .ok_or_else(|| anyhow::anyhow!("BINANCE_SECRET_KEY not set"))?;
+            let exchange = BinanceExchange::new(api_key.clone(), secret_key.clone(), config.exchange.testnet);
+            let state = Arc::new(AppState {
+                exchange,
+                risk: RiskEngine::new(config.risk.clone()),
+                audit: Mutex::new(AuditLog::new(&config::config_dir())?),
+                config: config.clone(),
+            });
+            info!("[INIT] Exchange: {}", state.exchange.name());
+            log_risk_config(&config);
+            server::serve(state, secrets, &config.server.host, config.server.port).await
+        }
+        "pumpfun" => {
+            let kp = resolve_keypair_path(secrets, &config)?;
+            let wallet = solana::wallet::Wallet::from_file(&kp)?;
+            let exchange = PumpFunExchange::new(wallet, config.solana.rpc_url.clone());
+            let state = Arc::new(AppState {
+                exchange,
+                risk: RiskEngine::new(config.risk.clone()),
+                audit: Mutex::new(AuditLog::new(&config::config_dir())?),
+                config: config.clone(),
+            });
+            info!("[INIT] Exchange: {} | RPC: {}", state.exchange.name(), config.solana.rpc_url);
+            log_risk_config(&config);
+            server::serve(state, secrets, &config.server.host, config.server.port).await
+        }
+        "pumpswap" => {
+            let kp = resolve_keypair_path(secrets, &config)?;
+            let wallet = solana::wallet::Wallet::from_file(&kp)?;
+            let exchange = PumpSwapExchange::new(wallet, config.solana.rpc_url.clone());
+            let state = Arc::new(AppState {
+                exchange,
+                risk: RiskEngine::new(config.risk.clone()),
+                audit: Mutex::new(AuditLog::new(&config::config_dir())?),
+                config: config.clone(),
+            });
+            info!("[INIT] Exchange: {} | RPC: {}", state.exchange.name(), config.solana.rpc_url);
+            log_risk_config(&config);
+            server::serve(state, secrets, &config.server.host, config.server.port).await
+        }
+        other => anyhow::bail!("Unknown exchange '{}'. Use: binance, pumpfun, pumpswap", other),
+    }
+}
+
+/// Execute a trade from CLI.
+async fn do_trade(config: Config, secrets: &Secrets, action: &str, symbol: &str, amount: f64) -> anyhow::Result<()> {
     let side = match action.to_lowercase().as_str() {
         "buy" => OrderSide::Buy,
         "sell" => OrderSide::Sell,
         _ => anyhow::bail!("Invalid action '{}'. Use 'buy' or 'sell'.", action),
     };
 
-    let symbol = symbol.to_uppercase();
-
-    // Get price for risk check
-    let price = state.exchange.get_price(&symbol).await
-        .map_err(|e| anyhow::anyhow!("Failed to get price: {}", e))?;
-
-    println!("Current price for {}: ${:.2}", symbol, price);
-
-    // Risk check
-    state.risk.check_pre_trade(&symbol, side, amount, price)
-        .map_err(|e| anyhow::anyhow!("Risk check failed: {}", e))?;
-
-    // Execute
     let coid = format!("gc-cli-{}", uuid::Uuid::new_v4().simple());
     let req = OrderRequest {
-        symbol: symbol.clone(),
+        symbol: symbol.to_string(),
         side,
         order_type: OrderType::Market,
         quantity: amount,
@@ -138,39 +193,47 @@ async fn do_trade(
         client_order_id: coid,
     };
 
-    let result = state.exchange.market_order(&req).await
-        .map_err(|e| anyhow::anyhow!("Order failed: {}", e))?;
-
-    state.risk.record_fill(&result);
-
-    println!("\nOrder filled:");
-    println!("  Symbol:    {}", result.symbol);
-    println!("  Side:      {}", result.side);
-    println!("  Quantity:  {:.8}", result.filled_qty);
-    println!("  Price:     ${:.2}", result.avg_price);
-    println!("  Order ID:  {}", result.exchange_order_id);
-    println!("  Status:    {:?}", result.status);
-
-    // Audit
-    {
-        let mut audit = state.audit.lock().await;
-        let _ = audit.record(&audit::AuditEntry {
-            client_order_id: result.client_order_id.clone(),
-            exchange_order_id: result.exchange_order_id.clone(),
-            symbol: result.symbol.clone(),
-            side: result.side,
-            order_type: OrderType::Market,
-            requested_qty: amount,
-            filled_qty: result.filled_qty,
-            avg_price: result.avg_price,
-            status: result.status,
-            commission: result.commission,
-            risk_snapshot: state.risk.snapshot(),
-            error: None,
-        });
+    match config.exchange.name.as_str() {
+        "binance" => {
+            let api_key = secrets.binance_api_key.as_ref()
+                .ok_or_else(|| anyhow::anyhow!("BINANCE_API_KEY not set"))?;
+            let secret_key = secrets.binance_secret_key.as_ref()
+                .ok_or_else(|| anyhow::anyhow!("BINANCE_SECRET_KEY not set"))?;
+            let ex = BinanceExchange::new(api_key.clone(), secret_key.clone(), config.exchange.testnet);
+            let price = ex.get_price(&req.symbol).await.map_err(|e| anyhow::anyhow!("{}", e))?;
+            println!("Price: ${:.2}", price);
+            let result = ex.market_order(&req).await.map_err(|e| anyhow::anyhow!("{}", e))?;
+            print_result(&result);
+        }
+        "pumpfun" => {
+            let kp = resolve_keypair_path(secrets, &config)?;
+            let wallet = solana::wallet::Wallet::from_file(&kp)?;
+            let ex = PumpFunExchange::new(wallet, config.solana.rpc_url.clone());
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await; // blockhash init
+            let result = ex.market_order(&req).await.map_err(|e| anyhow::anyhow!("{}", e))?;
+            print_result(&result);
+        }
+        "pumpswap" => {
+            let kp = resolve_keypair_path(secrets, &config)?;
+            let wallet = solana::wallet::Wallet::from_file(&kp)?;
+            let ex = PumpSwapExchange::new(wallet, config.solana.rpc_url.clone());
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let result = ex.market_order(&req).await.map_err(|e| anyhow::anyhow!("{}", e))?;
+            print_result(&result);
+        }
+        other => anyhow::bail!("Unknown exchange '{}'", other),
     }
-
     Ok(())
+}
+
+fn print_result(r: &exchange::OrderResult) {
+    println!("\nOrder result:");
+    println!("  Symbol:    {}", r.symbol);
+    println!("  Side:      {}", r.side);
+    println!("  Qty:       {:.8}", r.filled_qty);
+    println!("  Price:     {:.8}", r.avg_price);
+    println!("  TX/Order:  {}", r.exchange_order_id);
+    println!("  Status:    {:?}", r.status);
 }
 
 #[tokio::main]
@@ -182,29 +245,14 @@ async fn main() -> anyhow::Result<()> {
         Commands::Serve => {
             let config = Config::load()?;
             init_logging(&config.logging.level);
-            let secrets = Secrets::from_env()?;
-            let state = build_state(config.clone(), &secrets)?;
-
-            info!("[INIT] Exchange: {}", state.exchange.name());
-            info!("[INIT] Risk: max_position=${}, max_daily_loss=${}, max_positions={}, rate_limit={}/min",
-                config.risk.max_position_usd,
-                config.risk.max_daily_loss_usd,
-                config.risk.max_open_positions,
-                config.risk.max_trades_per_minute,
-            );
-
-            server::serve(state, &secrets, &config.server.host, config.server.port).await
+            let secrets = Secrets::from_env(&config.exchange.name)?;
+            build_and_serve(config, &secrets).await
         }
-        Commands::Trade {
-            action,
-            symbol,
-            amount,
-        } => {
+        Commands::Trade { action, symbol, amount } => {
             let config = Config::load()?;
             init_logging(&config.logging.level);
-            let secrets = Secrets::from_env()?;
-            let state = build_state(config, &secrets)?;
-            do_trade(state, &action, &symbol, amount).await
+            let secrets = Secrets::from_env(&config.exchange.name)?;
+            do_trade(config, &secrets, &action, &symbol, amount).await
         }
     }
 }

@@ -68,6 +68,23 @@ pub async fn handle_trades<E: Exchange>(
     Json(serde_json::json!({ "trades": trades }))
 }
 
+/// GET /trades/stats — aggregated trade statistics for dashboard.
+pub async fn handle_trade_stats<E: Exchange>(
+    State(state): State<Arc<AppState<E>>>,
+) -> Json<serde_json::Value> {
+    let audit = state.audit.lock().await;
+    Json(audit.trade_stats())
+}
+
+/// GET /trades/pnl — PnL series for equity curve chart.
+pub async fn handle_pnl_series<E: Exchange>(
+    State(state): State<Arc<AppState<E>>>,
+) -> Json<serde_json::Value> {
+    let audit = state.audit.lock().await;
+    let series = audit.pnl_series();
+    Json(serde_json::json!({ "series": series }))
+}
+
 /// DELETE /order/:id — cancel open order.
 pub async fn handle_cancel<E: Exchange>(
     State(state): State<Arc<AppState<E>>>,

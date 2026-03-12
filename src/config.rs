@@ -13,6 +13,8 @@ pub struct Config {
     pub risk: RiskConfig,
     #[serde(default = "default_logging")]
     pub logging: LoggingConfig,
+    #[serde(default)]
+    pub solana: SolanaConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -52,6 +54,30 @@ pub struct LoggingConfig {
     pub level: String,
     #[serde(default = "default_log_format")]
     pub format: String,
+}
+
+/// Solana-specific config (used by PumpFun + PumpSwap exchanges).
+#[derive(Debug, Clone, Deserialize)]
+pub struct SolanaConfig {
+    /// Solana RPC URL (mainnet, devnet, or premium like Helius/Shyft)
+    #[serde(default = "default_rpc_url")]
+    pub rpc_url: String,
+    /// Path to Solana keypair file (JSON array of 64 bytes)
+    #[serde(default)]
+    pub keypair_path: String,
+}
+
+impl Default for SolanaConfig {
+    fn default() -> Self {
+        Self {
+            rpc_url: default_rpc_url(),
+            keypair_path: String::new(),
+        }
+    }
+}
+
+fn default_rpc_url() -> String {
+    "https://api.mainnet-beta.solana.com".into()
 }
 
 // Defaults
@@ -126,23 +152,46 @@ pub fn config_dir() -> PathBuf {
         .join(".greedyclaw")
 }
 
-/// Secrets loaded from .env
+/// Secrets loaded from .env (exchange-agnostic — only loads what's available)
 #[derive(Debug, Clone)]
 pub struct Secrets {
-    pub binance_api_key: String,
-    pub binance_secret_key: String,
+    pub binance_api_key: Option<String>,
+    pub binance_secret_key: Option<String>,
+    pub solana_keypair_path: Option<String>,
     pub auth_token: String,
 }
 
 impl Secrets {
-    pub fn from_env() -> Result<Self> {
+    pub fn from_env(exchange_name: &str) -> Result<Self> {
+        let auth_token = std::env::var("GREEDYCLAW_AUTH_TOKEN")
+            .context("GREEDYCLAW_AUTH_TOKEN not set in .env")?;
+
+        // Only require exchange-specific keys for the selected exchange
+        let (binance_api_key, binance_secret_key) = if exchange_name == "binance" {
+            (
+                Some(
+                    std::env::var("BINANCE_API_KEY")
+                        .context("BINANCE_API_KEY not set in .env")?,
+                ),
+                Some(
+                    std::env::var("BINANCE_SECRET_KEY")
+                        .context("BINANCE_SECRET_KEY not set in .env")?,
+                ),
+            )
+        } else {
+            (
+                std::env::var("BINANCE_API_KEY").ok(),
+                std::env::var("BINANCE_SECRET_KEY").ok(),
+            )
+        };
+
+        let solana_keypair_path = std::env::var("SOLANA_KEYPAIR_PATH").ok();
+
         Ok(Self {
-            binance_api_key: std::env::var("BINANCE_API_KEY")
-                .context("BINANCE_API_KEY not set in .env")?,
-            binance_secret_key: std::env::var("BINANCE_SECRET_KEY")
-                .context("BINANCE_SECRET_KEY not set in .env")?,
-            auth_token: std::env::var("GREEDYCLAW_AUTH_TOKEN")
-                .context("GREEDYCLAW_AUTH_TOKEN not set in .env")?,
+            binance_api_key,
+            binance_secret_key,
+            solana_keypair_path,
+            auth_token,
         })
     }
 }
@@ -176,6 +225,7 @@ impl Config {
                 exchange: ExchangeConfig::default(),
                 risk: RiskConfig::default(),
                 logging: default_logging(),
+                solana: SolanaConfig::default(),
             })
         }
     }
@@ -187,6 +237,7 @@ host = "127.0.0.1"
 port = 7878
 
 [exchange]
+# Options: "binance", "pumpfun", "pumpswap"
 name = "binance"
 testnet = true
 
@@ -197,12 +248,23 @@ max_open_positions = 3
 allowed_symbols = ["BTCUSDT", "ETHUSDT"]
 max_trades_per_minute = 10
 
+# Solana settings (for pumpfun/pumpswap exchanges)
+# [solana]
+# rpc_url = "https://api.mainnet-beta.solana.com"
+# keypair_path = "~/.config/solana/id.json"
+
 [logging]
 level = "info"
 format = "pretty"
 "#;
 
-pub const DEFAULT_ENV: &str = r#"BINANCE_API_KEY=your_testnet_api_key_here
-BINANCE_SECRET_KEY=your_testnet_secret_key_here
+pub const DEFAULT_ENV: &str = r#"# === Auth (required for all exchanges) ===
 GREEDYCLAW_AUTH_TOKEN=change_me_to_random_hex_token
+
+# === Binance (for exchange = "binance") ===
+BINANCE_API_KEY=your_testnet_api_key_here
+BINANCE_SECRET_KEY=your_testnet_secret_key_here
+
+# === Solana (for exchange = "pumpfun" or "pumpswap") ===
+# SOLANA_KEYPAIR_PATH=~/.config/solana/id.json
 "#;

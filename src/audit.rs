@@ -178,4 +178,76 @@ impl AuditLog {
 
         rows.filter_map(|r| r.ok()).collect()
     }
+
+    /// Aggregated trade statistics for dashboard.
+    pub fn trade_stats(&self) -> serde_json::Value {
+        let total: i64 = self.conn
+            .query_row("SELECT COUNT(*) FROM trades WHERE status = 'Filled'", [], |r| r.get(0))
+            .unwrap_or(0);
+
+        let buys: i64 = self.conn
+            .query_row("SELECT COUNT(*) FROM trades WHERE side = 'buy' AND status = 'Filled'", [], |r| r.get(0))
+            .unwrap_or(0);
+
+        let sells: i64 = self.conn
+            .query_row("SELECT COUNT(*) FROM trades WHERE side = 'sell' AND status = 'Filled'", [], |r| r.get(0))
+            .unwrap_or(0);
+
+        let total_volume: f64 = self.conn
+            .query_row("SELECT COALESCE(SUM(filled_qty * avg_price), 0) FROM trades WHERE status = 'Filled'", [], |r| r.get(0))
+            .unwrap_or(0.0);
+
+        let total_commission: f64 = self.conn
+            .query_row("SELECT COALESCE(SUM(commission), 0) FROM trades WHERE status = 'Filled'", [], |r| r.get(0))
+            .unwrap_or(0.0);
+
+        let rejected: i64 = self.conn
+            .query_row("SELECT COUNT(*) FROM trades WHERE status = 'Rejected'", [], |r| r.get(0))
+            .unwrap_or(0);
+
+        // Today's trades
+        let today_trades: i64 = self.conn
+            .query_row(
+                "SELECT COUNT(*) FROM trades WHERE status = 'Filled' AND date(timestamp) = date('now')",
+                [], |r| r.get(0),
+            )
+            .unwrap_or(0);
+
+        // Unique symbols traded
+        let symbols: i64 = self.conn
+            .query_row("SELECT COUNT(DISTINCT symbol) FROM trades WHERE status = 'Filled'", [], |r| r.get(0))
+            .unwrap_or(0);
+
+        serde_json::json!({
+            "total_trades": total,
+            "buys": buys,
+            "sells": sells,
+            "rejected": rejected,
+            "total_volume_usd": total_volume,
+            "total_commission": total_commission,
+            "today_trades": today_trades,
+            "unique_symbols": symbols,
+        })
+    }
+
+    /// PnL series for equity curve chart. Returns cumulative realized PnL over time.
+    pub fn pnl_series(&self) -> Vec<serde_json::Value> {
+        let mut stmt = self.conn.prepare(
+            "SELECT timestamp, side, filled_qty, avg_price, symbol, realized_daily_pnl
+             FROM trades WHERE status = 'Filled' ORDER BY id ASC"
+        ).unwrap();
+
+        let rows = stmt.query_map([], |row| {
+            Ok(serde_json::json!({
+                "timestamp": row.get::<_, String>(0)?,
+                "side": row.get::<_, String>(1)?,
+                "filled_qty": row.get::<_, f64>(2)?,
+                "avg_price": row.get::<_, f64>(3)?,
+                "symbol": row.get::<_, String>(4)?,
+                "realized_pnl": row.get::<_, f64>(5)?,
+            }))
+        }).unwrap();
+
+        rows.filter_map(|r| r.ok()).collect()
+    }
 }

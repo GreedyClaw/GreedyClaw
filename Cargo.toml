@@ -30,6 +30,12 @@ hmac = "0.12"
 sha2 = "0.10"
 hex = "0.4"
 
+# Solana (Ed25519 signing, PDA derivation, base58/64)
+ed25519-dalek = { version = "2", features = ["std"] }
+curve25519-dalek = "4"
+bs58 = "0.5"
+base64 = "0.22"
+
 # CLI
 clap = { version = "4", features = ["derive", "env"] }
 

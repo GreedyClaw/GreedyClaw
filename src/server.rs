@@ -1,5 +1,6 @@
 use crate::api::{self, AppState};
 use crate::config::Secrets;
+use crate::dashboard;
 use crate::exchange::Exchange;
 
 use axum::extract::Request;
@@ -55,6 +56,8 @@ pub fn build_router<E: Exchange + Clone>(
         .route("/positions", get(api::status::handle_positions::<E>))
         .route("/price/{symbol}", get(api::status::handle_price::<E>))
         .route("/trades", get(api::status::handle_trades::<E>))
+        .route("/trades/stats", get(api::status::handle_trade_stats::<E>))
+        .route("/trades/pnl", get(api::status::handle_pnl_series::<E>))
         .route("/order/{id}", delete(api::status::handle_cancel::<E>))
         .with_state(state)
         .layer(TraceLayer::new_for_http())
@@ -66,7 +69,10 @@ pub fn build_router<E: Exchange + Clone>(
             }
         }));
 
-    api_routes
+    // Dashboard served without auth (token entered in the UI)
+    Router::new()
+        .route("/dashboard", get(dashboard::serve_dashboard))
+        .merge(api_routes)
 }
 
 /// Start the server.
@@ -81,11 +87,12 @@ pub async fn serve<E: Exchange + Clone>(
     let listener = tokio::net::TcpListener::bind(&addr).await?;
 
     info!("🦀 GreedyClaw v{} listening on {}", env!("CARGO_PKG_VERSION"), addr);
-    info!("   POST /trade    — execute trades");
-    info!("   GET  /status   — health + risk snapshot");
-    info!("   GET  /balance  — account balances");
+    info!("   GET  /dashboard — visual trading dashboard");
+    info!("   POST /trade     — execute trades");
+    info!("   GET  /status    — health + risk snapshot");
+    info!("   GET  /balance   — account balances");
     info!("   GET  /positions — open positions");
-    info!("   GET  /trades   — audit log");
+    info!("   GET  /trades    — audit log");
 
     axum::serve(listener, router).await?;
     Ok(())

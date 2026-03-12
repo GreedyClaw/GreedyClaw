@@ -1,4 +1,6 @@
 pub mod binance;
+pub mod pumpfun;
+pub mod pumpswap;
 pub mod types;
 
 pub use types::*;
