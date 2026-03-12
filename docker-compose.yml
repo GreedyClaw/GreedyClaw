@@ -1,0 +1,67 @@
+# GreedyClaw — Full Stack: Gateway + Brain + MT5 Bridge
+# Usage: docker-compose up
+# Docs: https://github.com/GreedyClaw/GreedyClaw
+
+services:
+  # Rust execution gateway (the "hands")
+  gateway:
+    build: .
+    ports:
+      - "7878:7878"
+    volumes:
+      - greedyclaw-data:/root/.greedyclaw
+    environment:
+      - GREEDYCLAW_AUTH_TOKEN=${GREEDYCLAW_AUTH_TOKEN:-changeme}
+      - BINANCE_API_KEY=${BINANCE_API_KEY:-}
+      - BINANCE_SECRET_KEY=${BINANCE_SECRET_KEY:-}
+      - MT5_BRIDGE_URL=http://mt5-bridge:7879
+      - CCXT_BRIDGE_URL=http://ccxt-bridge:7880
+    restart: unless-stopped
+
+  # Python AI agent (the "brain")
+  brain:
+    build: ./brain
+    depends_on:
+      - gateway
+    volumes:
+      - greedyclaw-data:/root/.greedyclaw
+    environment:
+      - GREEDYCLAW_URL=http://gateway:7878
+      - GREEDYCLAW_AUTH_TOKEN=${GREEDYCLAW_AUTH_TOKEN:-changeme}
+      # LLM providers — set at least one
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OLLAMA_URL=${OLLAMA_URL:-}
+      # Agent config
+      - BRAIN_MARKET=${BRAIN_MARKET:-forex}
+      - BRAIN_MODEL=${BRAIN_MODEL:-claude-sonnet-4-20250514}
+    restart: unless-stopped
+
+  # MT5 Python bridge (optional — for Forex/Gold)
+  mt5-bridge:
+    build: ./mt5-bridge
+    ports:
+      - "7879:7879"
+    profiles:
+      - mt5
+    restart: unless-stopped
+
+  # CCXT Python bridge (optional — for 100+ crypto exchanges)
+  ccxt-bridge:
+    build: ./mt5-bridge
+    command: ["python", "ccxt_bridge.py", "--exchange", "${CCXT_EXCHANGE:-bybit}"]
+    ports:
+      - "7880:7880"
+    environment:
+      - CCXT_API_KEY=${CCXT_API_KEY:-}
+      - CCXT_SECRET=${CCXT_SECRET:-}
+      - CCXT_SANDBOX=${CCXT_SANDBOX:-false}
+    profiles:
+      - ccxt
+    restart: unless-stopped
+
+volumes:
+  greedyclaw-data:

@@ -160,6 +160,56 @@ server.tool(
   })
 );
 
+// --- pnl ---
+server.tool(
+  "pnl",
+  "Get PnL time series for equity curve visualization.",
+  {},
+  async () => ({
+    content: [{ type: "text", text: await gcFetch("/trades/pnl") }],
+  })
+);
+
+// --- scanner_start ---
+server.tool(
+  "scanner_start",
+  "Start the PumpFun token scanner (Solana memecoin discovery).",
+  {},
+  async () => ({
+    content: [{ type: "text", text: await gcFetch("/scanner/start", "POST") }],
+  })
+);
+
+// --- scanner_stop ---
+server.tool(
+  "scanner_stop",
+  "Stop the PumpFun token scanner.",
+  {},
+  async () => ({
+    content: [{ type: "text", text: await gcFetch("/scanner/stop", "POST") }],
+  })
+);
+
+// --- scanner_status ---
+server.tool(
+  "scanner_status",
+  "Get scanner status: tracked tokens, metrics, top tokens by score.",
+  {},
+  async () => ({
+    content: [{ type: "text", text: await gcFetch("/scanner/status") }],
+  })
+);
+
+// --- scanner_tokens ---
+server.tool(
+  "scanner_tokens",
+  "Get all tokens tracked by the scanner with scores and metrics.",
+  {},
+  async () => ({
+    content: [{ type: "text", text: await gcFetch("/scanner/tokens") }],
+  })
+);
+
 // Start
 const transport = new StdioServerTransport();
 await server.connect(transport);
